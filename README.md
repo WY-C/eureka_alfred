@@ -18,7 +18,7 @@ We support the native Openai and the Azure Openai APIs.
 
 - Make sure that you have either an [Openai API](https://platform.openai.com/api-keys) or [Azure Openai API](https://learn.microsoft.com/en-us/azure/ai-services/openai/quickstart?tabs=command-line%2Cpython-new&pivots=programming-language-python) key.
 
-- Install Isaac Lab, see the [installation guide](https://isaac-sim.github.io/IsaacLab/source/setup/installation/index.html).
+- Install Isaac Lab, see the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
 
 - Using a python interpreter that has Isaac Lab installed, install Isaac Lab Eureka
     ```
