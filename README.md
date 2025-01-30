@@ -1,7 +1,7 @@
 # Isaac Lab Eureka
 
-[![IsaacSim](https://img.shields.io/badge/IsaacSim-4.2.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
-[![Isaac Lab](https://img.shields.io/badge/IsaacLab-1.2.0-silver)](https://isaac-sim.github.io/IsaacLab)
+[![IsaacSim](https://img.shields.io/badge/IsaacSim-4.5.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
+[![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.0.0-silver)](https://isaac-sim.github.io/IsaacLab)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://docs.python.org/3/whatsnew/3.10.html)
 [![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/20.04/)
 [![Windows platform](https://img.shields.io/badge/platform-windows--64-orange.svg)](https://www.microsoft.com/en-us/)
@@ -22,7 +22,7 @@ We support the native Openai and the Azure Openai APIs.
 
 - Using a python interpreter that has Isaac Lab installed, install Isaac Lab Eureka
     ```
-    python -m pip install -e exts/isaaclab_eureka
+    python -m pip install -e source/isaaclab_eureka
     ```
 
 ## Running Isaac Lab Eureka
@@ -113,7 +113,7 @@ For RL-Games, run:
 ### Limitations
 
 - Isaac Lab Eureka currently only supports tasks implemented in the direct-workflow style, basing off of the ``DirectRLEnv`` class.
-Available examples can be found in the [task config](exts/isaaclab_eureka/isaaclab_eureka/config/tasks.py). Following the ``DirectRLEnv``
+Available examples can be found in the [task config](source/isaaclab_eureka/isaaclab_eureka/config/tasks.py). Following the ``DirectRLEnv``
 interface, we assume each task has the observation function implemented in a method named ``_get_observations()``.
 - Currently, only RSL RL and RL-Games libraries are supported.
 - Due to limitations of multiprocessing on Windows, running with argument ``num_parallel_runs`` > 1 is not supported on Windows.

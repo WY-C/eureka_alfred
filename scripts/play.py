@@ -15,7 +15,7 @@ from isaaclab_eureka.utils import get_freest_gpu
 
 def main(args_cli):
     """Create the environment for the task."""
-    from omni.isaac.lab.app import AppLauncher
+    from isaaclab.app import AppLauncher
 
     # parse args from cmdline
     device = args_cli.device
@@ -33,9 +33,9 @@ def main(args_cli):
 
     import gymnasium as gym
 
-    import omni.isaac.lab_tasks  # noqa: F401
-    from omni.isaac.lab.envs import DirectRLEnvCfg
-    from omni.isaac.lab_tasks.utils import parse_env_cfg
+    import isaaclab_tasks  # noqa: F401
+    from isaaclab.envs import DirectRLEnvCfg
+    from isaaclab_tasks.utils import parse_env_cfg
 
     env_cfg: DirectRLEnvCfg = parse_env_cfg(task)
     env_cfg.sim.device = device
@@ -43,12 +43,12 @@ def main(args_cli):
     env = gym.make(task, cfg=env_cfg)
 
     """Run the inferencing of the task."""
-    from omni.isaac.lab_tasks.utils.parse_cfg import load_cfg_from_registry
+    from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
 
     if args_cli.rl_library == "rsl_rl":
         from rsl_rl.runners import OnPolicyRunner
 
-        from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
+        from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 
         agent_cfg: RslRlOnPolicyRunnerCfg = load_cfg_from_registry(args_cli.task, "rsl_rl_cfg_entry_point")
         agent_cfg.device = device
@@ -75,12 +75,14 @@ def main(args_cli):
         from rl_games.common.algo_observer import IsaacAlgoObserver
         from rl_games.torch_runner import Runner
 
-        from omni.isaac.lab_tasks.utils.wrappers.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
+        from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 
         agent_cfg = load_cfg_from_registry(args_cli.task, "rl_games_cfg_entry_point")
         # parse checkpoint path
         agent_cfg["params"]["load_checkpoint"] = True
         agent_cfg["params"]["load_path"] = checkpoint
+        agent_cfg["params"]["config"]["device"] = device
+        agent_cfg["params"]["config"]["device_name"] = device
         clip_obs = agent_cfg["params"]["env"].get("clip_observations", math.inf)
         clip_actions = agent_cfg["params"]["env"].get("clip_actions", math.inf)
         env = RlGamesVecEnvWrapper(env, device, clip_obs, clip_actions)
