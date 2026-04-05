@@ -34,12 +34,17 @@ class LLMManager:
         self._temperature = temperature
         self._prompts = [{"role": "system", "content": system_prompt}]
 
-        if "AZURE_OPENAI_API_KEY" in os.environ:
-            self._client = openai.AzureOpenAI(api_version="2024-02-01")
-        elif "OPENAI_API_KEY" in os.environ:
-            self._client = openai.OpenAI()
+        local_base_url = "http://localhost:8000/v1" 
+
+        if "OPENAI_API_KEY" in os.environ:
+            # api_key는 로컬 서버라면 아무 문자열("EMPTY")이나 넣어도 되는 경우가 많습니다.
+            self._client = openai.OpenAI(
+                base_url=local_base_url, 
+                api_key=os.environ.get("OPENAI_API_KEY", "EMPTY") 
+            )
         else:
-            raise RuntimeError("No Openai API key found in environment variables")
+            # 키가 없더라도 로컬 서버용으로 강제 생성
+            self._client = openai.OpenAI(base_url=local_base_url, api_key="EMPTY")
 
     def extract_code_from_response(self, response: str) -> str:
         """Extract the code component from the LLM response
@@ -94,3 +99,4 @@ class LLMManager:
         raw_outputs = [response.message.content for response in responses.choices]
         reward_strings = [self.extract_code_from_response(raw_output) for raw_output in raw_outputs]
         return {"reward_strings": reward_strings, "raw_outputs": raw_outputs}
+    

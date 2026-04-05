@@ -1,0 +1,87 @@
+Certainly! Let's focus on designing a reward function that guides the agent towards the Apple in the AI2-THOR environment. We'll start by providing a clear reasoning for the reward design and then implement it in Python.
+
+### Reasoning
+
+1. **Initial State**: The agent starts in a room where the Apple is located somewhere.
+2. **Goal**: The goal is to move the agent towards the Apple and eventually place it on the CounterTop.
+3. **Reward Design**:
+   - **Proximity Reward**: Give a small positive reward for each step that brings the agent closer to the Apple.
+   - **Apple Pickup Reward**: Give a larger positive reward when the agent picks up the Apple.
+   - **CounterTop Proximity Reward**: Once the Apple is picked up, give a small positive reward for each step that brings the agent closer to the CounterTop.
+   - **Success Reward**: Give a large positive reward when the Apple is placed on the CounterTop.
+   - **Penalty for Inaction**: Give a small negative reward for staying in the same position to encourage exploration.
+
+### Python Code
+
+```python
+def _get_rewards_eureka(env):
+    # Constants for reward values
+    PROXIMITY_REWARD = 0.1
+    PICKUP_REWARD = 1.0
+    COUNTERTOP_PROXIMITY_REWARD = 0.1
+    SUCCESS_REWARD = 10.0
+    INACTION_PENALTY = -0.1
+    
+    # Initialize rewards dictionary
+    rewards_dict = {
+        'proximity': 0,
+        'pickup': 0,
+        'counter_proximity': 0,
+        'success': 0,
+        'inaction_penalty': 0
+    }
+    
+    # Get current state information
+    agent_position = env.agent_state['position']
+    apple_position = env.get_object_by_id('Apple_1')['position']
+    countertop_position = env.get_object_by_id('CounterTop_1')['position']
+    apple_picked_up = env.get_object_by_id('Apple_1')['isPickedUp']
+    
+    # Calculate distance metrics
+    distance_to_apple = env.calculate_distance(agent_position, apple_position)
+    distance_to_counter = env.calculate_distance(agent_position, countertop_position)
+    
+    # Proximity reward: closer to the Apple
+    if not apple_picked_up:
+        previous_distance_to_apple = env.previous_state['distance_to_apple']
+        if distance_to_apple < previous_distance_to_apple:
+            rewards_dict['proximity'] += PROXIMITY_REWARD
+    
+    # Apple pickup reward
+    if apple_picked_up and not env.previous_state['apple_picked_up']:
+        rewards_dict['pickup'] += PICKUP_REWARD
+    
+    # CounterTop proximity reward: closer to the CounterTop after picking up the Apple
+    if apple_picked_up:
+        previous_distance_to_counter = env.previous_state['distance_to_counter']
+        if distance_to_counter < previous_distance_to_counter:
+            rewards_dict['counter_proximity'] += COUNTERTOP_PROXIMITY_REWARD
+    
+    # Success reward: Apple placed on the CounterTop
+    if env.get_object_by_id('Apple_1')['isOnTopOf'] == 'CounterTop_1':
+        rewards_dict['success'] += SUCCESS_REWARD
+    
+    # Penalty for inaction
+    if env.agent_state['position'] == env.previous_state['agent_position']:
+        rewards_dict['inaction_penalty'] += INACTION_PENALTY
+    
+    # Calculate total reward
+    total_reward = sum(rewards_dict.values())
+    
+    return total_reward, rewards_dict
+```
+
+### Explanation of the Code
+
+1. **Constants**: Define the reward values for different actions.
+2. **Rewards Dictionary**: Initialize a dictionary to keep track of the rewards for each type of action.
+3. **State Information**: Retrieve the current positions of the agent, Apple, and CounterTop, as well as whether the Apple has been picked up.
+4. **Distance Metrics**: Calculate the distances from the agent to the Apple and from the agent to the CounterTop.
+5. **Proximity Reward**: If the Apple is not picked up, reward the agent for getting closer to the Apple.
+6. **Apple Pickup Reward**: Reward the agent for picking up the Apple.
+7. **CounterTop Proximity Reward**: If the Apple is picked up, reward the agent for getting closer to the CounterTop.
+8. **Success Reward**: Reward the agent for placing the Apple on the CounterTop.
+9. **Inaction Penalty**: Penalize the agent for staying in the same position.
+10. **Total Reward**: Sum the rewards from the dictionary to get the total reward.
+
+This reward function should guide the agent effectively towards the Apple and then to the CounterTop, encouraging the desired behavior.

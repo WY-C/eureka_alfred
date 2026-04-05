@@ -1,0 +1,55 @@
+### Reasoning
+
+To design the reward function for the task of placing an Apple on a CounterTop in the AI2-THOR environment, we need to focus on guiding the agent through the necessary steps to achieve the goal. In this first iteration, we will focus on moving the agent toward the Apple. Here's the step-by-step reasoning:
+
+1. **Initialize Rewards**: Start with a total reward of 0 and an empty dictionary to store individual rewards.
+2. **Check if the Agent is Near the Apple**: If the agent is within a certain distance from the Apple, provide a positive reward. This encourages the agent to move closer to the Apple.
+3. **Penalize for Distance from the Apple**: If the agent moves away from the Apple, provide a negative reward to discourage such behavior.
+4. **Terminal Reward**: If the agent reaches the Apple, provide a large positive reward to indicate that the task has been successfully completed for this step.
+
+### Python Code
+
+```python
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {
+        'near_apple': 0,
+        'distance_penalty': 0,
+        'reached_apple': 0
+    }
+    
+    # Get the current position of the agent
+    agent_pos = env.last_event.metadata['agent']['position']
+    
+    # Get the position of the Apple
+    apple = [obj for obj in env.last_event.metadata['objects'] if obj['name'] == 'Apple'][0]
+    apple_pos = apple['position']
+    
+    # Calculate the distance between the agent and the Apple
+    distance_to_apple = ((agent_pos['x'] - apple_pos['x'])**2 + (agent_pos['z'] - apple_pos['z'])**2)**0.5
+    
+    # Check if the agent is near the Apple
+    if distance_to_apple < 0.5:  # Threshold for being "near" the Apple
+        rewards_dict['near_apple'] = 1.0
+        total_reward += rewards_dict['near_apple']
+    
+    # Penalize for moving away from the Apple
+    if distance_to_apple > 1.0:  # Threshold for being "far" from the Apple
+        rewards_dict['distance_penalty'] = -0.1
+        total_reward += rewards_dict['distance_penalty']
+    
+    # Terminal reward if the agent reaches the Apple
+    if distance_to_apple < 0.1:  # Threshold for reaching the Apple
+        rewards_dict['reached_apple'] = 10.0
+        total_reward += rewards_dict['reached_apple']
+    
+    return total_reward, rewards_dict
+```
+
+### Explanation
+
+- **near_apple**: Provides a positive reward of 1.0 if the agent is within 0.5 units of the Apple.
+- **distance_penalty**: Provides a negative reward of -0.1 if the agent is more than 1.0 units away from the Apple.
+- **reached_apple**: Provides a large positive reward of 10.0 if the agent is within 0.1 units of the Apple, indicating that the agent has successfully reached the Apple.
+
+This reward function should guide the agent effectively toward the Apple in the first iteration.

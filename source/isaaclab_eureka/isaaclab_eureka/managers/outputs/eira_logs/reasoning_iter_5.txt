@@ -1,0 +1,89 @@
+### Reasoning
+
+1. **Initial Setup**:
+   - The goal is to move the agent towards the Apple.
+   - We need to provide positive rewards for actions that bring the agent closer to the Apple and negative rewards for actions that move the agent away from the Apple.
+
+2. **Distance-Based Reward**:
+   - Calculate the distance between the agent and the Apple before and after each action.
+   - If the distance decreases, provide a positive reward.
+   - If the distance increases, provide a negative reward.
+   - If the distance remains the same, provide a small negative reward to encourage exploration.
+
+3. **Termination Conditions**:
+   - If the agent reaches the Apple, provide a large positive reward.
+   - If the agent performs an invalid action (e.g., trying to move through a wall), provide a negative reward.
+
+4. **Normalization**:
+   - Normalize the distance-based rewards to ensure they are within a reasonable range.
+
+5. **Return Values**:
+   - Return the total reward and a dictionary of rewards for debugging and analysis.
+
+### Python Code
+
+```python
+def _get_rewards_eureka(env):
+    # Constants
+    REWARD_DISTANCE = 1.0
+    PENALTY_DISTANCE = -0.5
+    PENALTY_INVALID_ACTION = -1.0
+    REWARD_REACH_APPLE = 10.0
+    
+    # Get the current state
+    agent_position = env.agent_state['position']
+    apple_position = env.get_object_by_id('Apple_1')['position']
+    
+    # Calculate the initial distance
+    initial_distance = ((agent_position['x'] - apple_position['x']) ** 2 + 
+                        (agent_position['z'] - apple_position['z']) ** 2) ** 0.5
+    
+    # Perform the action
+    action = env.last_action
+    env.step(action)
+    
+    # Get the new state
+    new_agent_position = env.agent_state['position']
+    
+    # Calculate the new distance
+    new_distance = ((new_agent_position['x'] - apple_position['x']) ** 2 + 
+                    (new_agent_position['z'] - apple_position['z']) ** 2) ** 0.5
+    
+    # Calculate the distance change
+    distance_change = initial_distance - new_distance
+    
+    # Determine the reward
+    if distance_change > 0:
+        reward = REWARD_DISTANCE * distance_change
+    elif distance_change < 0:
+        reward = PENALTY_DISTANCE * abs(distance_change)
+    else:
+        reward = PENALTY_DISTANCE * 0.1  # Small penalty for no movement
+    
+    # Check if the agent has reached the Apple
+    if new_distance < 0.5:  # Threshold for reaching the Apple
+        reward += REWARD_REACH_APPLE
+    
+    # Check for invalid actions
+    if env.last_action_result['error']:
+        reward += PENALTY_INVALID_ACTION
+    
+    # Return the total reward and a dictionary of rewards
+    rewards_dict = {
+        'distance_reward': reward,
+        'reach_apple_reward': REWARD_REACH_APPLE if new_distance < 0.5 else 0,
+        'invalid_action_penalty': PENALTY_INVALID_ACTION if env.last_action_result['error'] else 0
+    }
+    
+    return reward, rewards_dict
+```
+
+### Explanation
+
+- **Constants**: Define the reward and penalty values for different scenarios.
+- **State Extraction**: Extract the agent's and Apple's positions from the environment.
+- **Distance Calculation**: Calculate the initial and new distances between the agent and the Apple.
+- **Reward Calculation**: Based on the change in distance, calculate the reward. Positive for getting closer, negative for moving away, and a small penalty for no movement.
+- **Reach Apple**: If the agent gets close enough to the Apple, provide a large positive reward.
+- **Invalid Actions**: Penalize the agent for performing invalid actions.
+- **Return Values**: Return the total reward and a dictionary of rewards for detailed analysis.

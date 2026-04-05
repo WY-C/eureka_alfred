@@ -19,6 +19,7 @@ TASKS_CFG = {
         "success_metric_to_win": 0.0,
         "success_metric_tolerance": 0.2,
     },
+    
 }
 """Configuration for the tasks supported by Isaac Lab Eureka.
 
