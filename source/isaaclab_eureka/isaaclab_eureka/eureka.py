@@ -33,7 +33,7 @@ class Eureka:
         max_training_iterations: int = 100,
         feedback_subsampling: int = 10,
         temperature: float = 1.0,
-        gpt_model: str = "gpt-4",
+        gpt_model: str = "Qwen/Qwen2.5-72B-Instruct-AWQ",
         num_parallel_runs: int = 1,
     ):
         """Initialize the Eureka class.

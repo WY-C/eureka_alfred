@@ -1,0 +1,61 @@
+### Reasoning
+
+1. **Initial State**: The agent starts in a random location within the environment and needs to locate the Apple.
+2. **Goal**: Move the agent closer to the Apple.
+3. **Reward Design**:
+   - **Proximity Reward**: Provide a positive reward based on the distance between the agent and the Apple. The closer the agent gets to the Apple, the higher the reward.
+   - **Step Penalty**: To encourage the agent to find the Apple efficiently, apply a small negative reward for each step taken.
+   - **Terminal Reward**: A large positive reward when the agent reaches the Apple.
+
+### Python Code
+
+```python
+def _get_rewards_eureka(env):
+    # Constants
+    PROXIMITY_REWARD_FACTOR = 0.1
+    STEP_PENALTY = -0.01
+    TERMINAL_REWARD = 1.0
+    
+    # Get the current state of the agent and the Apple
+    agent_position = env.agent_state['position']
+    apple_position = env.get_object_by_id('Apple_1')['position']
+    
+    # Calculate the Euclidean distance between the agent and the Apple
+    distance_to_apple = ((agent_position['x'] - apple_position['x']) ** 2 +
+                         (agent_position['z'] - apple_position['z']) ** 2) ** 0.5
+    
+    # Proximity reward: Inverse of the distance
+    proximity_reward = PROXIMITY_REWARD_FACTOR / (distance_to_apple + 1e-6)
+    
+    # Step penalty
+    step_penalty = STEP_PENALTY
+    
+    # Terminal reward if the agent is at the Apple's position
+    terminal_reward = TERMINAL_REWARD if distance_to_apple < 0.5 else 0.0
+    
+    # Total reward
+    total_reward = proximity_reward + step_penalty + terminal_reward
+    
+    # Rewards dictionary for debugging and analysis
+    rewards_dict = {
+        'proximity_reward': proximity_reward,
+        'step_penalty': step_penalty,
+        'terminal_reward': terminal_reward,
+        'total_reward': total_reward
+    }
+    
+    return total_reward, rewards_dict
+```
+
+### Explanation
+
+- **PROXIMITY_REWARD_FACTOR**: This factor scales the proximity reward. A smaller value makes the reward less significant, while a larger value makes it more significant.
+- **STEP_PENALTY**: A small negative reward to discourage the agent from taking unnecessary steps.
+- **TERMINAL_REWARD**: A large positive reward to encourage the agent to reach the Apple.
+- **distance_to_apple**: The Euclidean distance between the agent and the Apple.
+- **proximity_reward**: Calculated as the inverse of the distance to ensure that the reward increases as the agent gets closer to the Apple.
+- **step_penalty**: A constant negative reward applied for each step taken.
+- **terminal_reward**: A large positive reward if the agent is within a certain threshold distance from the Apple.
+- **total_reward**: The sum of all individual rewards.
+
+This reward function should guide the agent towards the Apple effectively by providing positive feedback for getting closer and penalizing unnecessary movements.

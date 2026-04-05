@@ -1,0 +1,76 @@
+### Reasoning
+
+To design the reward function for the task "Place an Apple on a CounterTop" in the AI2-THOR environment, we need to focus on guiding the agent to move toward the Apple. In this first iteration, we will:
+
+1. **Reward for Moving Closer to the Apple**: The agent should receive a positive reward when it moves closer to the Apple.
+2. **Penalty for Moving Away from the Apple**: The agent should receive a negative reward when it moves away from the Apple.
+3. **Penalty for Inaction**: The agent should receive a small negative reward for not taking any action to move closer to the Apple.
+
+### Reward Function Design
+
+1. **Calculate Distance to the Apple**: We will calculate the Euclidean distance between the agent and the Apple.
+2. **Compare Current and Previous Distances**: We will compare the current distance to the previous distance to determine if the agent has moved closer or farther away.
+3. **Assign Rewards/Penalties**:
+   - Positive reward for moving closer.
+   - Negative reward for moving away.
+   - Small negative reward for inaction.
+
+### Python Code
+
+```python
+def _get_rewards_eureka(env):
+    # Initialize rewards dictionary
+    rewards_dict = {
+        'move_closer': 0,
+        'move_away': 0,
+        'inaction': 0
+    }
+    
+    # Get the current position of the agent
+    agent_pos = env.last_event.metadata['agent']['position']
+    
+    # Get the position of the Apple
+    apple_pos = None
+    for obj in env.last_event.metadata['objects']:
+        if obj['name'] == 'Apple':
+            apple_pos = obj['position']
+            break
+    
+    if apple_pos is None:
+        raise ValueError("Apple not found in the environment.")
+    
+    # Calculate the Euclidean distance to the Apple
+    current_distance = ((agent_pos['x'] - apple_pos['x']) ** 2 + 
+                        (agent_pos['z'] - apple_pos['z']) ** 2) ** 0.5
+    
+    # Compare with the previous distance
+    if hasattr(env, 'previous_distance'):
+        if current_distance < env.previous_distance:
+            rewards_dict['move_closer'] = 1.0
+        elif current_distance > env.previous_distance:
+            rewards_dict['move_away'] = -1.0
+        else:
+            rewards_dict['inaction'] = -0.1
+    else:
+        # First step, no previous distance to compare
+        rewards_dict['inaction'] = -0.1
+    
+    # Store the current distance for the next step
+    env.previous_distance = current_distance
+    
+    # Calculate total reward
+    total_reward = sum(rewards_dict.values())
+    
+    return total_reward, rewards_dict
+```
+
+### Explanation
+
+- **Initialization**: We initialize a dictionary `rewards_dict` to keep track of different types of rewards.
+- **Agent and Apple Positions**: We retrieve the current position of the agent and the position of the Apple.
+- **Distance Calculation**: We calculate the Euclidean distance between the agent and the Apple.
+- **Comparison with Previous Distance**: If the agent has moved closer, we assign a positive reward. If the agent has moved away, we assign a negative reward. If there is no change, we assign a small negative reward for inaction.
+- **Storing Previous Distance**: We store the current distance to use it in the next step for comparison.
+- **Total Reward**: We sum up all the rewards in the `rewards_dict` to get the total reward.
+
+This reward function should effectively guide the agent to move toward the Apple in the AI2-THOR environment.
