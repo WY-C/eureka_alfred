@@ -1,32 +1,163 @@
-#좀 더 수정해야함. 기존 코드에서 더 찾아볼것 OUTPUT에 리워드도 적어두고....
-
 # eureka_main.py
 import os
-import sys
-from datetime import datetime
+import re
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager
 
-# --- 1. Configurations ---
+# --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-72B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1  
-TEMPERATURE = 0.7
+TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
 TRAINING_STEPS = 10000 
 
-SYSTEM_PROMPT = """
-You are a world-class reward engineer for reinforcement learning. 
-Task: 'Place an Apple on a CounterTop' in the AI2-THOR environment.
+TASK_DESCRIPTION = "Place an Apple on a Plate and then place the Plate on a CounterTop"
 
-[Instructions]
-1. Provide your step-by-step 'Reasoning' for the reward design strictly in ENGLISH.
-2. Provide the reward function in a python code block starting with ```python.
-3. Function signature: def _get_rewards_eureka(env):
-4. Return: (total_reward, rewards_dict)
+SYSTEM_PROMPT = """
+You are a world-class reward engineer.
+
+CRITICAL OUTPUT FORMAT:
+
+You MUST return EXACTLY:
+
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+
+    ...
+
+    return total_reward, rewards_dict
+
+RULES:
+- NEVER return a single value
+- ALWAYS return TWO values
+- Second value MUST be dict
+- If you violate this → code will crash
+
+ENV:
+Use env.controller.last_event.metadata
+
+CRITICAL:
+
+You MUST define EXACTLY this function:
+
+def _get_rewards_eureka(env):
+
+If you fail, the code will crash.
 """
 
-def run_eira_loop():
-    # 2. Initialize Managers
+# -------------------------------
+# ✅ Subtask + Success Code 생성
+# -------------------------------
+def generate_subtasks(llm, task_desc):
+    prompt = f"""
+Task: {task_desc}
+
+You are a task decomposition planner.
+ONLY output subtasks and success conditions.
+
+DO NOT write reward functions.
+DO NOT write python functions.
+
+For each subtask, generate:
+
+1. Subtask: ...
+   SuccessCode: <python expression>
+
+Rules:
+- SuccessCode must be executable Python
+- Use variable: metadata
+- metadata = env.controller.last_event.metadata
+
+Example:
+
+1. Subtask: Pick up apple
+   SuccessCode: any(obj["objectType"]=="Apple" for obj in metadata["inventoryObjects"])
+
+2. Subtask: Place apple on plate
+   SuccessCode: any(
+       obj["objectType"]=="Apple" and obj["parentReceptacles"] and
+       any("Plate" in p for p in obj["parentReceptacles"])
+       for obj in metadata["objects"]
+   )
+
+STRICT:
+- No explanation
+
+"""
+
+    response = llm.prompt(prompt)
+
+    if isinstance(response, dict) and "raw_outputs" in response:
+        return response["raw_outputs"][0]
+    return str(response)
+
+# -------------------------------
+# ✅ 파싱
+# -------------------------------
+def parse_subtasks_with_success(text):
+    lines = text.split("\n")
+
+    subtasks = []
+    current = None
+    collecting_code = False
+    code_lines = []
+
+    for line in lines:
+        line = line.strip()
+
+        # 새로운 subtask 시작
+        if re.match(r"^\d+\.\s*Subtask:", line):
+            if current:
+                if code_lines:
+                    current["success"] = " ".join(code_lines)
+                subtasks.append(current)
+
+            current = {"subtask": "", "success": ""}
+            code_lines = []
+            collecting_code = False
+
+            current["subtask"] = re.sub(r"^\d+\.\s*Subtask:\s*", "", line)
+
+        # SuccessCode 시작
+        elif line.startswith("SuccessCode:"):
+            collecting_code = True
+            code_line = line.replace("SuccessCode:", "").strip()
+            code_lines = [code_line]
+
+        # SuccessCode 이어지는 줄
+        elif collecting_code:
+            # 다음 subtask 나오면 종료
+            if re.match(r"^\d+\.", line):
+                collecting_code = False
+            else:
+                code_lines.append(line)
+
+    # 마지막 처리
+    if current:
+        if code_lines:
+            current["success"] = " ".join(code_lines)
+        subtasks.append(current)
+
+    return subtasks
+    
+
+# -------------------------------
+# ✅ success eval 함수
+# -------------------------------
+def check_success(env, code):
+    metadata = env.unwrapped.controller.last_event.metadata
+
+    try:
+        return eval(code, {"metadata": metadata})
+    except Exception as e:
+        print(f"⚠️ Success eval error: {e}")
+        return False
+
+# -------------------------------
+# ✅ main loop
+# -------------------------------
+def run_train_loop():
     llm = LLMManager(
         gpt_model=GPT_MODEL,
         num_suggestions=NUM_SUGGESTIONS,
@@ -39,57 +170,130 @@ def run_eira_loop():
         max_training_iterations=TRAINING_STEPS
     )
 
-    last_feedback = "This is the first iteration. Focus on moving the agent toward the Apple."
+    os.makedirs("outputs/eira_logs", exist_ok=True)
 
-    # 3. Eureka Main Loop
-    for i in range(MAX_ITERATIONS):
-        print(f"\n🔄 [Iteration {i+1}/{MAX_ITERATIONS}] Requesting reward design from {GPT_MODEL}...")
-        
-        # LLM 호출
-        response = llm.prompt(f"Design the reward function. Feedback: {last_feedback}")
-        reward_strings = response["reward_strings"]
-        raw_outputs = response["raw_outputs"] # 이 녀석은 리스트 ['내용'] 입니다.
+    # --- Subtasks 생성 ---
+    subtask_plan = generate_subtasks(llm, TASK_DESCRIPTION)
+    subtasks = parse_subtasks_with_success(subtask_plan)
+    print(subtask_plan)
 
-        # 📄 [수정 포인트 1] 파일 저장 시으로 문자열 추출
-        os.makedirs("outputs/eira_logs", exist_ok=True)
-        with open(f"outputs/eira_logs/reasoning_iter_{i+1}.txt", "w", encoding="utf-8") as f:
-            if isinstance(raw_outputs, list) and len(raw_outputs) > 0:
-                # 보따리(list)에서 첫 번째 내용물(str)을 꺼내서 씁니다.
-                f.write(raw_outputs[0]) 
-            else:
-                f.write(str(raw_outputs))
-        print(f"📄 Reasoning log saved: outputs/eira_logs/reasoning_iter_{i+1}.txt")
+    print("🧩 Subtasks:", subtasks)
 
-        # 4. 학습 시작
-        print(f"🚀 Training started (Target: {TRAINING_STEPS} steps)...")
-        
-        try:
-            # task_manager.train은 결과 딕셔너리가 든 '리스트'를 반환합니다.
-            results = task_manager.train(reward_strings)
-            
-            # 📊 [수정 포인트 2] 리스트에서 0번 인덱스 추출
-            if isinstance(results, list) and len(results) > 0:
-                best_result = results 
+    # --- Subtask loop ---
+    for s_idx, s in enumerate(subtasks):
+        subtask = s["subtask"]
+        success_code = s["success"]
+
+        print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
+        print(f"🎯 SuccessCode: {success_code}")
+
+        subtask_log_path = f"outputs/eira_logs/subtask_{s_idx+1}_log.txt"
+
+        with open(subtask_log_path, "w") as f:
+            f.write(f"Subtask: {subtask}\n")
+            f.write(f"SuccessCode: {success_code}\n")
+            f.write("="*50 + "\n")
+
+        best_score = -float("inf")
+        best_reward_code = None
+
+        last_feedback = f"Focus ONLY on subtask: {subtask}"
+
+        for i in range(MAX_ITERATIONS):
+            print(f"\n🔄 Iter {i+1}")
+
+            reward_prompt = f"""
+Main Task:
+{TASK_DESCRIPTION}
+
+Current Subtask:
+{subtask}
+
+Previous Reward Function:
+{best_reward_code if i > 0 else "None(It is the first iteration.)"}
+
+Feedback:
+{last_feedback}
+
+Improve the previous reward function.
+DO NOT repeat the same logic.
+
+CRITICAL:
+
+You MUST define EXACTLY this function:
+
+def _get_rewards_eureka(env):
+
+If you fail, the code will crash.
+"""
+
+            response = llm.prompt(reward_prompt)
+            reward_strings = response["reward_strings"]
+
+            reward_data = [{
+                "reward_code": reward_strings[0],
+                "success_code": success_code   # 너가 추가한거
+            }]
+
+            results = task_manager.train(reward_data)
+            result = results[0]
+
+            # 🔥 실패 케이스
+            if not result["success"]:
+                error_msg = result["exception"]
+
+                last_feedback = f"""
+        Your previous code failed with this error:
+
+        {error_msg}
+
+        Fix the reward function.
+        """
+
+                continue
+                # ✅ 성공 케이스
+            score = result["reward_mean"]
+
+            last_feedback = f"""
+        Score: {score}
+        """
+
+            if score < 1:
+                last_feedback += "Reward rarely triggers. Add more dense intermediate rewards."
+            elif score < 5:
+                last_feedback += "Reward exists but not guiding behavior. Add distance-based reward."
             else:
-                best_result = results
-            
-            # 점수 추출 및 피드백 생성
-            if isinstance(best_result, dict):
-                score = best_result.get("reward_mean", 0)
-                print(f"📊 Iteration {i+1} Finished. Mean Reward: {score:.4f}")
-                last_feedback = f"The previous reward function got a score of {score:.4f}. Improve it to be more dense."
-            else:
-                print(f"⚠️ Warning: Invalid result format: {type(best_result)}")
-                score = 0
-                last_feedback = "The training completed but results were not formatted correctly."
-                
-        except Exception as e:
-            error_msg = str(e)
-            print(f"⚠️ Training Error: {error_msg}")
-            last_feedback = f"The previous reward function failed with error: {error_msg}. Please fix the code."
+                last_feedback += "Refine success condition and avoid reward hacking."
+
+            best_score = max(best_score, score)
+
+            # 로그 저장
+            with open(subtask_log_path, "a") as f:
+                f.write(f"\n--- Iter {i+1} ---\n")
+                f.write(f"Score: {score}\n")
+                f.write("\n[Reward]\n")
+                f.write(reward_strings[0] + "\n")
+
+        # -----------------------
+        # ✅ success rate 측정
+        # -----------------------
+        print("📊 Evaluating success rate...")
+
+        env = task_manager._processes[0]  # 실제론 worker에서 가져오는 구조 필요 (간단히 설명용)
+
+        # ⚠️ 실제론 env 접근 구조 바꿔야 함 (아래 참고)
+        success_rate = 0  # placeholder
+
+        with open(subtask_log_path, "a") as f:
+            f.write("\n🔥 BEST REWARD 🔥\n")
+            f.write(best_reward_code or "")
+            f.write(f"\nBest Score: {best_score:.4f}\n")
+
+        print(f"✅ Best Score: {best_score:.4f}")
 
     task_manager.close()
-    print("\n🏁 All Eureka iterations finished. Check your EIRA data!")
+    print("\n🏁 Done!")
+
 
 if __name__ == "__main__":
-    run_eira_loop()
+    run_train_loop()

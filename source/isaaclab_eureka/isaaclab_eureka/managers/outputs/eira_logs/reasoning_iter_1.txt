@@ -1,61 +1,79 @@
+Certainly! Let's focus on designing a reward function that encourages the agent to complete the subtasks progressively, starting with moving the agent toward the Apple.
+
 ### Reasoning
+- **Approach the Apple**: The agent should receive a reward for moving closer to the Apple. This can be done by calculating the distance to the Apple and rewarding the agent inversely proportional to this distance.
+- **Grasp the Apple**: Once the agent is close enough to the Apple, it should receive a significant reward for successfully grasping the Apple.
+- **Lift the Apple**: After grasping, the agent should receive a reward for lifting the Apple off the surface.
+- **Approach the Plate**: The agent should then move toward the Plate, receiving a reward for getting closer to it.
+- **Place the Apple on the Plate**: The agent should receive a large reward for successfully placing the Apple on the Plate.
+- **Approach the CounterTop**: The agent should then move toward the CounterTop, receiving a reward for getting closer to it.
+- **Place the Plate on the CounterTop**: Finally, the agent should receive a significant reward for placing the Plate on the CounterTop.
 
-1. **Initial State**: The agent starts in a random location within the environment and needs to locate the Apple.
-2. **Goal**: Move the agent closer to the Apple.
-3. **Reward Design**:
-   - **Proximity Reward**: Provide a positive reward based on the distance between the agent and the Apple. The closer the agent gets to the Apple, the higher the reward.
-   - **Step Penalty**: To encourage the agent to find the Apple efficiently, apply a small negative reward for each step taken.
-   - **Terminal Reward**: A large positive reward when the agent reaches the Apple.
-
-### Python Code
-
+### Reward Function
 ```python
 def _get_rewards_eureka(env):
-    # Constants
-    PROXIMITY_REWARD_FACTOR = 0.1
-    STEP_PENALTY = -0.01
-    TERMINAL_REWARD = 1.0
-    
-    # Get the current state of the agent and the Apple
-    agent_position = env.agent_state['position']
-    apple_position = env.get_object_by_id('Apple_1')['position']
-    
-    # Calculate the Euclidean distance between the agent and the Apple
-    distance_to_apple = ((agent_position['x'] - apple_position['x']) ** 2 +
-                         (agent_position['z'] - apple_position['z']) ** 2) ** 0.5
-    
-    # Proximity reward: Inverse of the distance
-    proximity_reward = PROXIMITY_REWARD_FACTOR / (distance_to_apple + 1e-6)
-    
-    # Step penalty
-    step_penalty = STEP_PENALTY
-    
-    # Terminal reward if the agent is at the Apple's position
-    terminal_reward = TERMINAL_REWARD if distance_to_apple < 0.5 else 0.0
-    
-    # Total reward
-    total_reward = proximity_reward + step_penalty + terminal_reward
-    
-    # Rewards dictionary for debugging and analysis
+    total_reward = 0
     rewards_dict = {
-        'proximity_reward': proximity_reward,
-        'step_penalty': step_penalty,
-        'terminal_reward': terminal_reward,
-        'total_reward': total_reward
+        "approach_apple": 0,
+        "grasp_apple": 0,
+        "lift_apple": 0,
+        "approach_plate": 0,
+        "place_apple_on_plate": 0,
+        "approach_counter": 0,
+        "place_plate_on_counter": 0
     }
+    
+    # Approach the Apple
+    if not env.is_grasped("apple"):
+        distance_to_apple = env.get_distance_to("apple")
+        if distance_to_apple < 0.5:  # Adjust threshold as needed
+            rewards_dict["approach_apple"] = 1 - distance_to_apple / 0.5
+            total_reward += rewards_dict["approach_apple"]
+    
+    # Grasp the Apple
+    if env.is_grasped("apple"):
+        rewards_dict["grasp_apple"] = 2
+        total_reward += 2
+    
+    # Lift the Apple
+    if env.is_lifted("apple"):
+        rewards_dict["lift_apple"] = 3
+        total_reward += 3
+    
+    # Approach the Plate
+    if env.is_grasped("apple") and not env.is_placed_on("apple", "plate"):
+        distance_to_plate = env.get_distance_to("plate")
+        if distance_to_plate < 0.5:  # Adjust threshold as needed
+            rewards_dict["approach_plate"] = 1 - distance_to_plate / 0.5
+            total_reward += rewards_dict["approach_plate"]
+    
+    # Place the Apple on the Plate
+    if env.is_placed_on("apple", "plate"):
+        rewards_dict["place_apple_on_plate"] = 5
+        total_reward += 5
+    
+    # Approach the CounterTop
+    if env.is_placed_on("apple", "plate") and not env.is_placed_on("plate", "counter"):
+        distance_to_counter = env.get_distance_to("counter")
+        if distance_to_counter < 0.5:  # Adjust threshold as needed
+            rewards_dict["approach_counter"] = 1 - distance_to_counter / 0.5
+            total_reward += rewards_dict["approach_counter"]
+    
+    # Place the Plate on the CounterTop
+    if env.is_placed_on("plate", "counter"):
+        rewards_dict["place_plate_on_counter"] = 10
+        total_reward += 10
     
     return total_reward, rewards_dict
 ```
 
 ### Explanation
+- **approach_apple**: The agent receives a reward based on how close it is to the Apple. The reward is calculated as `1 - (distance_to_apple / 0.5)`, which gives a higher reward as the distance decreases.
+- **grasp_apple**: The agent receives a fixed reward of 2 for successfully grasping the Apple.
+- **lift_apple**: The agent receives a fixed reward of 3 for lifting the Apple off the surface.
+- **approach_plate**: The agent receives a reward based on how close it is to the Plate, similar to the approach to the Apple.
+- **place_apple_on_plate**: The agent receives a fixed reward of 5 for successfully placing the Apple on the Plate.
+- **approach_counter**: The agent receives a reward based on how close it is to the CounterTop, similar to the approach to the Apple and Plate.
+- **place_plate_on_counter**: The agent receives a fixed reward of 10 for successfully placing the Plate on the CounterTop.
 
-- **PROXIMITY_REWARD_FACTOR**: This factor scales the proximity reward. A smaller value makes the reward less significant, while a larger value makes it more significant.
-- **STEP_PENALTY**: A small negative reward to discourage the agent from taking unnecessary steps.
-- **TERMINAL_REWARD**: A large positive reward to encourage the agent to reach the Apple.
-- **distance_to_apple**: The Euclidean distance between the agent and the Apple.
-- **proximity_reward**: Calculated as the inverse of the distance to ensure that the reward increases as the agent gets closer to the Apple.
-- **step_penalty**: A constant negative reward applied for each step taken.
-- **terminal_reward**: A large positive reward if the agent is within a certain threshold distance from the Apple.
-- **total_reward**: The sum of all individual rewards.
-
-This reward function should guide the agent towards the Apple effectively by providing positive feedback for getting closer and penalizing unnecessary movements.
+This reward structure ensures that the agent is guided through each subtask in the correct order, providing dense and meaningful rewards to facilitate learning.

@@ -34,7 +34,7 @@ class LLMManager:
         self._temperature = temperature
         self._prompts = [{"role": "system", "content": system_prompt}]
 
-        local_base_url = "http://localhost:8000/v1" 
+        local_base_url = "http://192.168.0.19:8000/v1" 
 
         if "OPENAI_API_KEY" in os.environ:
             # api_key는 로컬 서버라면 아무 문자열("EMPTY")이나 넣어도 되는 경우가 많습니다.

@@ -1,0 +1,90 @@
+Subtask: Place apple on plate
+SuccessCode: any( obj["objectType"] == "Apple" and obj["parentReceptacles"] and any("Plate" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"] ) 
+==================================================
+
+--- Iter 1 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+
+    metadata = env.controller.last_event.metadata
+
+    # Check if the apple is on the plate
+    apple_on_plate = any(
+        obj["objectType"] == "Apple" and obj["parentReceptacles"] and
+        any("Plate" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    )
+
+    if apple_on_plate:
+        total_reward += 1
+        rewards_dict["apple_on_plate"] = 1
+    else:
+        rewards_dict["apple_on_plate"] = 0
+
+    return total_reward, rewards_dict
+
+
+--- Iter 2 ---
+Score: 71.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    total_reward = 0
+    rewards_dict = {}
+
+    # Check if the apple is in the inventory
+    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
+        total_reward += 1
+        rewards_dict["apple_in_inventory"] = 1
+
+    # Check if the apple is on the plate
+    if any(
+        obj["objectType"] == "Apple" and obj["parentReceptacles"] and
+        any("Plate" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    ):
+        total_reward += 5
+        rewards_dict["apple_on_plate"] = 5
+
+    return total_reward, rewards_dict
+
+
+--- Iter 3 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    total_reward = 0
+    rewards_dict = {}
+
+    # Check if the apple is in the inventory
+    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
+        total_reward += 1
+        rewards_dict["apple_in_inventory"] = 1
+
+    # Check if the apple is on a plate
+    if any(
+        obj["objectType"] == "Apple" and obj["parentReceptacles"] and
+        any("Plate" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    ):
+        total_reward += 10
+        rewards_dict["apple_on_plate"] = 10
+
+    # Check if the plate is on the countertop
+    if any(
+        obj["objectType"] == "Plate" and obj["parentReceptacles"] and
+        any("CounterTop" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    ):
+        total_reward += 5
+        rewards_dict["plate_on_countertop"] = 5
+
+    return total_reward, rewards_dict
+

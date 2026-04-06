@@ -1,0 +1,76 @@
+Subtask: Pick up apple
+SuccessCode: any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]) 
+==================================================
+
+--- Iter 2 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+
+    metadata = env.controller.last_event.metadata
+
+    # Check if the apple is in the inventory
+    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
+        total_reward += 1
+        rewards_dict["apple_picked_up"] = 1
+    else:
+        rewards_dict["apple_picked_up"] = 0
+
+    return total_reward, rewards_dict
+
+
+--- Iter 3 ---
+Score: 45.80000000000037
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    
+    metadata = env.controller.last_event.metadata
+    
+    # Reward for approaching the apple
+    apple_objects = [obj for obj in metadata["objects"] if obj["objectType"] == "Apple"]
+    if apple_objects:
+        apple = apple_objects[0]
+        distance_to_apple = apple["distance"]
+        if distance_to_apple < 1.5:
+            total_reward += 0.1
+            rewards_dict["approach_apple"] = 0.1
+    
+    # Reward for picking up the apple
+    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
+        total_reward += 1.0
+        rewards_dict["pick_up_apple"] = 1.0
+    
+    return total_reward, rewards_dict
+
+
+--- Iter 5 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+
+    metadata = env.controller.last_event.metadata
+
+    # Check if the apple is in the inventory
+    apple_in_inventory = any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"])
+    
+    if apple_in_inventory:
+        total_reward += 1.0
+        rewards_dict["apple_in_inventory"] = 1.0
+    else:
+        rewards_dict["apple_in_inventory"] = 0.0
+
+    return total_reward, rewards_dict
+
+
+🔥 BEST REWARD 🔥
+
+Best Score: 45.8000
