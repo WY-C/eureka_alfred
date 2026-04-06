@@ -1,0 +1,373 @@
+Subtask: Place plate with apple on countertop
+SuccessCode: any( obj["objectType"] == "Plate" and obj["parentReceptacles"] and any("Apple" in p for p in obj["parentReceptacles"]) and obj["receptacleObjectIds"] and any("CounterTop" in p for p in obj["receptacleObjectIds"]) for obj in metadata["objects"] )
+==================================================
+
+--- Iter 1 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    metadata = env.controller.last_event.metadata
+
+    # Check if the plate with the apple is visible
+    plate_with_apple_visible = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_visible:
+        total_reward += 0.3
+        rewards_dict["plate_with_apple_visible"] = 0.3
+
+    # Check if the plate with the apple is near the countertop
+    plate_with_apple_near_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any(
+            ct["objectType"] == "CounterTop" and
+            (obj["position"]["x"] - ct["position"]["x"]) ** 2 + (obj["position"]["z"] - ct["position"]["z"]) ** 2 < 0.5 ** 2
+            for ct in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_near_countertop:
+        total_reward += 0.5
+        rewards_dict["plate_with_apple_near_countertop"] = 0.5
+
+    # Check if the plate with the apple is on the countertop
+    plate_with_apple_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_on_countertop:
+        total_reward += 1.0
+        rewards_dict["plate_with_apple_on_countertop"] = 1.0
+
+    return total_reward, rewards_dict
+
+
+--- Iter 2 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    metadata = env.controller.last_event.metadata
+
+    # Check if the plate with the apple is visible
+    plate_with_apple_visible = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_visible:
+        total_reward += 0.2
+        rewards_dict["plate_with_apple_visible"] = 0.2
+
+    # Check if the plate with the apple is near the countertop
+    plate_with_apple_near_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any(
+            ct["objectType"] == "CounterTop" and
+            (obj["position"]["x"] - ct["position"]["x"]) ** 2 + (obj["position"]["z"] - ct["position"]["z"]) ** 2 < 0.5 ** 2
+            for ct in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_near_countertop:
+        total_reward += 0.4
+        rewards_dict["plate_with_apple_near_countertop"] = 0.4
+
+    # Check if the plate with the apple is partially on the countertop
+    plate_with_apple_partially_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"]) and
+        obj["isPartiallyOnReceptacle"]
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_partially_on_countertop:
+        total_reward += 0.6
+        rewards_dict["plate_with_apple_partially_on_countertop"] = 0.6
+
+    # Check if the plate with the apple is fully on the countertop
+    plate_with_apple_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"]) and
+        not obj["isPartiallyOnReceptacle"]
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_on_countertop:
+        total_reward += 1.0
+        rewards_dict["plate_with_apple_on_countertop"] = 1.0
+
+    return total_reward, rewards_dict
+
+
+--- Iter 3 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    metadata = env.controller.last_event.metadata
+
+    # Check if the plate with the apple is visible
+    plate_with_apple_visible = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_visible:
+        total_reward += 0.1
+        rewards_dict["plate_with_apple_visible"] = 0.1
+
+    # Check if the plate with the apple is being held
+    plate_with_apple_held = any(
+        obj["objectType"] == "Plate" and obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_held:
+        total_reward += 0.2
+        rewards_dict["plate_with_apple_held"] = 0.2
+
+    # Check if the plate with the apple is near the countertop
+    plate_with_apple_near_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any(
+            ct["objectType"] == "CounterTop" and
+            (obj["position"]["x"] - ct["position"]["x"]) ** 2 + (obj["position"]["z"] - ct["position"]["z"]) ** 2 < 0.5 ** 2
+            for ct in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_near_countertop:
+        total_reward += 0.3
+        rewards_dict["plate_with_apple_near_countertop"] = 0.3
+
+    # Check if the plate with the apple is partially on the countertop
+    plate_with_apple_partially_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"]) and
+        obj["openness"] > 0.5
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_partially_on_countertop:
+        total_reward += 0.4
+        rewards_dict["plate_with_apple_partially_on_countertop"] = 0.4
+
+    # Check if the plate with the apple is fully on the countertop
+    plate_with_apple_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"]) and
+        obj["openness"] == 1.0
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_on_countertop:
+        total_reward += 1.0
+        rewards_dict["plate_with_apple_on_countertop"] = 1.0
+
+    return total_reward, rewards_dict
+
+
+--- Iter 4 ---
+Score: 0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    metadata = env.controller.last_event.metadata
+
+    # Check if the plate is picked up
+    plate_picked_up = any(obj["objectType"] == "Plate" and obj["isPickedUp"] for obj in metadata["objects"])
+    if plate_picked_up:
+        total_reward += 0.1
+        rewards_dict["plate_picked_up"] = 0.1
+
+    # Check if the plate is near the apple
+    plate_near_apple = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any(
+            app["objectType"] == "Apple" and
+            (obj["position"]["x"] - app["position"]["x"]) ** 2 + (obj["position"]["z"] - app["position"]["z"]) ** 2 < 0.5 ** 2
+            for app in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_near_apple:
+        total_reward += 0.1
+        rewards_dict["plate_near_apple"] = 0.1
+
+    # Check if the apple is placed on the plate
+    apple_on_plate = any(
+        obj["objectType"] == "Apple" and
+        any("Plate" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    )
+    if apple_on_plate:
+        total_reward += 0.2
+        rewards_dict["apple_on_plate"] = 0.2
+
+    # Check if the plate with the apple is visible
+    plate_with_apple_visible = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_visible:
+        total_reward += 0.3
+        rewards_dict["plate_with_apple_visible"] = 0.3
+
+    # Check if the plate with the apple is near the countertop
+    plate_with_apple_near_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any(
+            ct["objectType"] == "CounterTop" and
+            (obj["position"]["x"] - ct["position"]["x"]) ** 2 + (obj["position"]["z"] - ct["position"]["z"]) ** 2 < 0.5 ** 2
+            for ct in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_near_countertop:
+        total_reward += 0.5
+        rewards_dict["plate_with_apple_near_countertop"] = 0.5
+
+    # Check if the plate with the apple is on the countertop
+    plate_with_apple_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_on_countertop:
+        total_reward += 1.0
+        rewards_dict["plate_with_apple_on_countertop"] = 1.0
+
+    return total_reward, rewards_dict
+
+
+--- Iter 5 ---
+Score: 0
+
+[Reward]
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    metadata = env.controller.last_event.metadata
+
+    # Check if the plate is being held
+    plate_held = any(
+        obj["objectType"] == "Plate" and obj["isPickedUp"]
+        for obj in metadata["inventoryObjects"]
+    )
+    if plate_held:
+        total_reward += 0.1
+        rewards_dict["plate_held"] = 0.1
+
+    # Check if the apple is being held
+    apple_held = any(
+        obj["objectType"] == "Apple" and obj["isPickedUp"]
+        for obj in metadata["inventoryObjects"]
+    )
+    if apple_held:
+        total_reward += 0.1
+        rewards_dict["apple_held"] = 0.1
+
+    # Check if the plate with the apple is visible
+    plate_with_apple_visible = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_visible:
+        total_reward += 0.3
+        rewards_dict["plate_with_apple_visible"] = 0.3
+
+    # Check if the plate with the apple is near the countertop
+    plate_with_apple_near_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any(
+            ct["objectType"] == "CounterTop" and
+            (obj["position"]["x"] - ct["position"]["x"]) ** 2 + (obj["position"]["z"] - ct["position"]["z"]) ** 2 < 0.5 ** 2
+            for ct in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_near_countertop:
+        total_reward += 0.5
+        rewards_dict["plate_with_apple_near_countertop"] = 0.5
+
+    # Check if the plate with the apple is on the countertop
+    plate_with_apple_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_on_countertop:
+        total_reward += 1.0
+        rewards_dict["plate_with_apple_on_countertop"] = 1.0
+
+    return total_reward, rewards_dict
+
+
+🔥 BEST REWARD 🔥
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+    metadata = env.controller.last_event.metadata
+
+    # Check if the plate with the apple is visible
+    plate_with_apple_visible = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_visible:
+        total_reward += 0.3
+        rewards_dict["plate_with_apple_visible"] = 0.3
+
+    # Check if the plate with the apple is near the countertop
+    plate_with_apple_near_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any(
+            ct["objectType"] == "CounterTop" and
+            (obj["position"]["x"] - ct["position"]["x"]) ** 2 + (obj["position"]["z"] - ct["position"]["z"]) ** 2 < 0.5 ** 2
+            for ct in metadata["objects"]
+        )
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_near_countertop:
+        total_reward += 0.5
+        rewards_dict["plate_with_apple_near_countertop"] = 0.5
+
+    # Check if the plate with the apple is on the countertop
+    plate_with_apple_on_countertop = any(
+        obj["objectType"] == "Plate" and not obj["isPickedUp"] and
+        any("Apple" in p for p in obj["receptacleObjectIds"]) and
+        any("CounterTop" in p for p in obj["parentReceptacles"])
+        for obj in metadata["objects"]
+    )
+    if plate_with_apple_on_countertop:
+        total_reward += 1.0
+        rewards_dict["plate_with_apple_on_countertop"] = 1.0
+
+    return total_reward, rewards_dict
+
+Best Score: 0.0000
