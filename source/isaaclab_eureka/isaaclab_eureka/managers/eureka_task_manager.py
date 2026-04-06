@@ -135,6 +135,8 @@ class EurekaTaskManager:
         return results
 
     # -------------------------
+    # worker
+    # -------------------------
     def _worker(self, idx, queue):
         raw_env = gym.make(
             self._task,
@@ -151,29 +153,68 @@ class EurekaTaskManager:
 
             reward_code = data["reward_code"]
             success_code = data["success_code"]
+            precondition_code = "True"
 
             try:
-                # compile reward
+                # -------------------------
+                # reward compile
+                # -------------------------
                 ns = {}
                 reward_code = clean_code(reward_code)
                 reward_code = fix_function_name(reward_code)
-                exec(f"{reward_code}", ns)
+
+                exec(reward_code, ns)
+
                 if "_get_rewards_eureka" not in ns:
                     raise ValueError("LLM did not define _get_rewards_eureka")
+
                 env._get_rewards_eureka = ns["_get_rewards_eureka"]
 
+                # -------------------------
+                # 🔥 precondition 만족하는 env 찾기
+                # -------------------------
+                MAX_RESET_TRY = 20
+                found = False
+
+                for _ in range(MAX_RESET_TRY):
+                    obs, _ = env.reset()
+                    metadata = env.unwrapped.controller.last_event.metadata
+
+                    try:
+                        if eval(precondition_code, {"metadata": metadata}):
+                            found = True
+                            break
+                    except Exception as e:
+                        print(f"⚠️ precondition eval error: {e}")
+                        break
+
+                # if not found:
+                #     raise RuntimeError("Failed to satisfy precondition")
+
+                # -------------------------
                 # train
+                # -------------------------
                 model = PPO("MultiInputPolicy", env, verbose=0, device=self._device)
                 model.learn(total_timesteps=self._max_training_iterations)
 
                 # -------------------------
-                # 🔥 success evaluation
+                # success eval
                 # -------------------------
                 success_count = 0
                 episodes = 10
 
                 for _ in range(episodes):
-                    obs, _ = env.reset()
+                    # 🔥 evaluation도 precondition 맞춰야 함
+                    for _ in range(MAX_RESET_TRY):
+                        obs, _ = env.reset()
+                        metadata = env.unwrapped.controller.last_event.metadata
+
+                        try:
+                            if eval(precondition_code, {"metadata": metadata}):
+                                break
+                        except:
+                            break
+
                     done = False
 
                     while not done:

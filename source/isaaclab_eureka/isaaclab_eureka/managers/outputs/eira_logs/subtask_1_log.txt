@@ -1,76 +1,124 @@
 Subtask: Pick up apple
-SuccessCode: any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]) 
+SuccessCode: any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"])
 ==================================================
+
+--- Iter 1 ---
+Score: 0.0
+
+[Reward]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    total_reward = 0
+    rewards_dict = {}
+
+    # Subtask: Pick up apple
+    if any(obj["objectType"] == "Apple" and obj["isPickedUp"] for obj in metadata["objects"]):
+        total_reward += 1
+        rewards_dict["Pick up apple"] = 1
+    else:
+        rewards_dict["Pick up apple"] = 0
+
+    return total_reward, rewards_dict
+
 
 --- Iter 2 ---
 Score: 0.0
 
 [Reward]
 def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
     total_reward = 0
     rewards_dict = {}
 
-    metadata = env.controller.last_event.metadata
+    # Reward for moving towards the apple
+    apple_positions = [obj['position'] for obj in metadata['objects'] if obj['objectType'] == 'Apple']
+    if apple_positions:
+        player_position = metadata['agent']['position']
+        closest_apple_distance = min((abs(player_position['x'] - pos['x']) + abs(player_position['z'] - pos['z']) for pos in apple_positions))
+        if closest_apple_distance < 1.5:
+            total_reward += 0.1
+            rewards_dict['close_to_apple'] = 0.1
 
-    # Check if the apple is in the inventory
-    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
-        total_reward += 1
-        rewards_dict["apple_picked_up"] = 1
-    else:
-        rewards_dict["apple_picked_up"] = 0
+    # Reward for picking up the apple
+    if any(obj['objectType'] == 'Apple' for obj in metadata['inventoryObjects']):
+        total_reward += 1.0
+        rewards_dict['picked_up_apple'] = 1.0
 
     return total_reward, rewards_dict
 
 
 --- Iter 3 ---
-Score: 45.80000000000037
+Score: 1.7000000000000004
 
 [Reward]
 def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
     total_reward = 0
     rewards_dict = {}
-    
-    metadata = env.controller.last_event.metadata
-    
+
     # Reward for approaching the apple
-    apple_objects = [obj for obj in metadata["objects"] if obj["objectType"] == "Apple"]
-    if apple_objects:
-        apple = apple_objects[0]
-        distance_to_apple = apple["distance"]
-        if distance_to_apple < 1.5:
-            total_reward += 0.1
-            rewards_dict["approach_apple"] = 0.1
-    
+    if any(obj["objectType"] == "Apple" and obj["visible"] for obj in metadata["objects"]):
+        total_reward += 0.1
+        rewards_dict["approach_apple"] = 0.1
+
     # Reward for picking up the apple
     if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
         total_reward += 1.0
         rewards_dict["pick_up_apple"] = 1.0
-    
+
+    return total_reward, rewards_dict
+
+
+--- Iter 4 ---
+Score: 111.52934657136493
+
+[Reward]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    total_reward = 0
+    rewards_dict = {}
+
+    # Distance to apple
+    apple_objects = [obj for obj in metadata["objects"] if obj["objectType"] == "Apple"]
+    if apple_objects:
+        player_pos = metadata["agent"]["position"]
+        min_distance = min(((player_pos["x"] - obj["position"]["x"]) ** 2 + (player_pos["z"] - obj["position"]["z"]) ** 2) ** 0.5 for obj in apple_objects)
+        distance_reward = max(0, 1 - min_distance / 5)  # Normalize distance reward
+        total_reward += distance_reward
+        rewards_dict["distance_to_apple"] = distance_reward
+
+    # Inventory check
+    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
+        total_reward += 1
+        rewards_dict["apple_picked_up"] = 1
+
     return total_reward, rewards_dict
 
 
 --- Iter 5 ---
-Score: 0.0
+Score: 9.20639193058014
 
 [Reward]
 def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
     total_reward = 0
     rewards_dict = {}
 
-    metadata = env.controller.last_event.metadata
+    # Distance to the nearest apple
+    apple_objects = [obj for obj in metadata["objects"] if obj["objectType"] == "Apple"]
+    if apple_objects:
+        min_distance = min([obj["distance"] for obj in apple_objects])
+        total_reward += max(0, 1 - min_distance)
+        rewards_dict["distance_to_apple"] = max(0, 1 - min_distance)
 
-    # Check if the apple is in the inventory
-    apple_in_inventory = any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"])
-    
-    if apple_in_inventory:
-        total_reward += 1.0
-        rewards_dict["apple_in_inventory"] = 1.0
-    else:
-        rewards_dict["apple_in_inventory"] = 0.0
+    # Picking up the apple
+    if any(obj["objectType"] == "Apple" for obj in metadata["inventoryObjects"]):
+        total_reward += 10
+        rewards_dict["picked_up_apple"] = 10
 
     return total_reward, rewards_dict
 
 
 🔥 BEST REWARD 🔥
 
-Best Score: 45.8000
+Best Score: 111.5293

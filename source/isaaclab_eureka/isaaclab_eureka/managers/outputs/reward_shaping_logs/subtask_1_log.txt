@@ -1,0 +1,3 @@
+Subtask: Pick up mug
+SuccessCode: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
+==================================================

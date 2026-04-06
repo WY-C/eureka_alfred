@@ -11,7 +11,7 @@ TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
 TRAINING_STEPS = 10000 
 
-TASK_DESCRIPTION = "Place an Apple on a Plate and then place the Plate on a CounterTop"
+TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
 SYSTEM_PROMPT = """
 You are a world-class reward engineer.
@@ -53,37 +53,30 @@ def generate_subtasks(llm, task_desc):
     prompt = f"""
 Task: {task_desc}
 
-You are a task decomposition planner.
-ONLY output subtasks and success conditions.
-
-DO NOT write reward functions.
-DO NOT write python functions.
-
 For each subtask, generate:
 
 1. Subtask: ...
+   PreconditionCode: <python expression>
    SuccessCode: <python expression>
 
 Rules:
-- SuccessCode must be executable Python
+- Both must be valid ONE LINE python expressions
 - Use variable: metadata
 - metadata = env.controller.last_event.metadata
+- DO NOT use env.xxx
 
 Example:
 
 1. Subtask: Pick up apple
+   PreconditionCode: True
    SuccessCode: any(obj["objectType"]=="Apple" for obj in metadata["inventoryObjects"])
 
 2. Subtask: Place apple on plate
-   SuccessCode: any(
-       obj["objectType"]=="Apple" and obj["parentReceptacles"] and
-       any("Plate" in p for p in obj["parentReceptacles"])
-       for obj in metadata["objects"]
-   )
+   PreconditionCode: any(obj["objectType"]=="Apple" for obj in metadata["inventoryObjects"])
+   SuccessCode: any(obj["objectType"]=="Apple" and obj["parentReceptacles"] and any("Plate" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"])
 
 STRICT:
 - No explanation
-
 """
 
     response = llm.prompt(prompt)
@@ -95,52 +88,32 @@ STRICT:
 # -------------------------------
 # ✅ 파싱
 # -------------------------------
-def parse_subtasks_with_success(text):
+def parse_subtasks(text):
     lines = text.split("\n")
 
     subtasks = []
-    current = None
-    collecting_code = False
-    code_lines = []
+    current = {}
 
     for line in lines:
         line = line.strip()
 
-        # 새로운 subtask 시작
         if re.match(r"^\d+\.\s*Subtask:", line):
             if current:
-                if code_lines:
-                    current["success"] = " ".join(code_lines)
                 subtasks.append(current)
-
-            current = {"subtask": "", "success": ""}
-            code_lines = []
-            collecting_code = False
+            current = {"subtask": "", "pre": "", "success": ""}
 
             current["subtask"] = re.sub(r"^\d+\.\s*Subtask:\s*", "", line)
 
-        # SuccessCode 시작
+        elif line.startswith("PreconditionCode:"):
+            current["pre"] = line.replace("PreconditionCode:", "").strip()
+
         elif line.startswith("SuccessCode:"):
-            collecting_code = True
-            code_line = line.replace("SuccessCode:", "").strip()
-            code_lines = [code_line]
+            current["success"] = line.replace("SuccessCode:", "").strip()
 
-        # SuccessCode 이어지는 줄
-        elif collecting_code:
-            # 다음 subtask 나오면 종료
-            if re.match(r"^\d+\.", line):
-                collecting_code = False
-            else:
-                code_lines.append(line)
-
-    # 마지막 처리
     if current:
-        if code_lines:
-            current["success"] = " ".join(code_lines)
         subtasks.append(current)
 
     return subtasks
-    
 
 # -------------------------------
 # ✅ success eval 함수
@@ -174,7 +147,7 @@ def run_train_loop():
 
     # --- Subtasks 생성 ---
     subtask_plan = generate_subtasks(llm, TASK_DESCRIPTION)
-    subtasks = parse_subtasks_with_success(subtask_plan)
+    subtasks = parse_subtasks(subtask_plan)
     print(subtask_plan)
 
     print("🧩 Subtasks:", subtasks)
@@ -187,7 +160,7 @@ def run_train_loop():
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
         print(f"🎯 SuccessCode: {success_code}")
 
-        subtask_log_path = f"outputs/eira_logs/subtask_{s_idx+1}_log.txt"
+        subtask_log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}_log.txt"
 
         with open(subtask_log_path, "w") as f:
             f.write(f"Subtask: {subtask}\n")
@@ -232,7 +205,8 @@ If you fail, the code will crash.
 
             reward_data = [{
                 "reward_code": reward_strings[0],
-                "success_code": success_code   # 너가 추가한거
+                "success_code": success_code,
+                "precondition_code": s["pre"]
             }]
 
             results = task_manager.train(reward_data)
