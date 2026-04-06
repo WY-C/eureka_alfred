@@ -3,6 +3,7 @@ import os
 import re
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager
+from policy_manager import PolicyManager
 
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-72B-Instruct-AWQ"
@@ -85,6 +86,30 @@ STRICT:
         return response["raw_outputs"][0]
     return str(response)
 
+def generate_policy_label(llm, subtask):
+    prompt = f"""
+Subtask: {subtask}
+
+Generate a short, general policy name.
+
+Rules:
+- snake_case
+- verb + object
+- generalizable
+
+Examples:
+pick_up_object
+navigate_to_object
+place_object_on_receptacle
+
+ONLY return label.
+"""
+    res = llm.prompt(prompt)
+
+    if isinstance(res, dict):
+        return res["raw_outputs"][0].strip()
+    return str(res).strip()
+
 # -------------------------------
 # ✅ 파싱
 # -------------------------------
@@ -130,6 +155,144 @@ def check_success(env, code):
 # -------------------------------
 # ✅ main loop
 # -------------------------------
+# def run_train_loop():
+#     llm = LLMManager(
+#         gpt_model=GPT_MODEL,
+#         num_suggestions=NUM_SUGGESTIONS,
+#         temperature=TEMPERATURE,
+#         system_prompt=SYSTEM_PROMPT
+#     )
+    
+#     task_manager = EurekaTaskManager(
+#         num_processes=NUM_SUGGESTIONS,
+#         max_training_iterations=TRAINING_STEPS
+#     )
+
+#     os.makedirs("outputs/eira_logs", exist_ok=True)
+
+#     # --- Subtasks 생성 ---
+#     subtask_plan = generate_subtasks(llm, TASK_DESCRIPTION)
+#     subtasks = parse_subtasks(subtask_plan)
+#     print(subtask_plan)
+
+#     print("🧩 Subtasks:", subtasks)
+
+#     # --- Subtask loop ---
+#     for s_idx, s in enumerate(subtasks):
+#         subtask = s["subtask"]
+#         success_code = s["success"]
+
+#         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
+#         print(f"🎯 SuccessCode: {success_code}")
+
+#         subtask_log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}_log.txt"
+
+#         with open(subtask_log_path, "w") as f:
+#             f.write(f"Subtask: {subtask}\n")
+#             f.write(f"SuccessCode: {success_code}\n")
+#             f.write("="*50 + "\n")
+
+#         best_score = -float("inf")
+#         best_reward_code = None
+
+#         last_feedback = f"Focus ONLY on subtask: {subtask}"
+
+#         for i in range(MAX_ITERATIONS):
+#             print(f"\n🔄 Iter {i+1}")
+
+#             reward_prompt = f"""
+# Main Task:
+# {TASK_DESCRIPTION}
+
+# Current Subtask:
+# {subtask}
+
+# Previous Reward Function:
+# {best_reward_code if i > 0 else "None(It is the first iteration.)"}
+
+# Feedback:
+# {last_feedback}
+
+# Improve the previous reward function.
+# DO NOT repeat the same logic.
+
+# CRITICAL:
+
+# You MUST define EXACTLY this function:
+
+# def _get_rewards_eureka(env):
+
+# If you fail, the code will crash.
+# """
+
+#             response = llm.prompt(reward_prompt)
+#             reward_strings = response["reward_strings"]
+
+#             reward_data = [{
+#                 "reward_code": reward_strings[0],
+#                 "success_code": success_code,
+#                 "precondition_code": s["pre"]
+#             }]
+
+#             results = task_manager.train(reward_data)
+#             result = results[0]
+
+#             # 🔥 실패 케이스
+#             if not result["success"]:
+#                 error_msg = result["exception"]
+
+#                 last_feedback = f"""
+#         Your previous code failed with this error:
+
+#         {error_msg}
+
+#         Fix the reward function.
+#         """
+
+#                 continue
+#                 # ✅ 성공 케이스
+#             score = result["reward_mean"]
+
+#             last_feedback = f"""
+#         Score: {score}
+#         """
+
+#             if score < 1:
+#                 last_feedback += "Reward rarely triggers. Add more dense intermediate rewards."
+#             elif score < 5:
+#                 last_feedback += "Reward exists but not guiding behavior. Add distance-based reward."
+#             else:
+#                 last_feedback += "Refine success condition and avoid reward hacking."
+
+#             best_score = max(best_score, score)
+
+#             # 로그 저장
+#             with open(subtask_log_path, "a") as f:
+#                 f.write(f"\n--- Iter {i+1} ---\n")
+#                 f.write(f"Score: {score}\n")
+#                 f.write("\n[Reward]\n")
+#                 f.write(reward_strings[0] + "\n")
+
+#         # -----------------------
+#         # ✅ success rate 측정
+#         # -----------------------
+#         print("📊 Evaluating success rate...")
+
+#         env = task_manager._processes[0]  # 실제론 worker에서 가져오는 구조 필요 (간단히 설명용)
+
+#         # ⚠️ 실제론 env 접근 구조 바꿔야 함 (아래 참고)
+#         success_rate = 0  # placeholder
+
+#         with open(subtask_log_path, "a") as f:
+#             f.write("\n🔥 BEST REWARD 🔥\n")
+#             f.write(best_reward_code or "")
+#             f.write(f"\nBest Score: {best_score:.4f}\n")
+
+#         print(f"✅ Best Score: {best_score:.4f}")
+
+#     task_manager.close()
+#     print("\n🏁 Done!")
+
 def run_train_loop():
     llm = LLMManager(
         gpt_model=GPT_MODEL,
@@ -137,38 +300,40 @@ def run_train_loop():
         temperature=TEMPERATURE,
         system_prompt=SYSTEM_PROMPT
     )
-    
+
     task_manager = EurekaTaskManager(
         num_processes=NUM_SUGGESTIONS,
         max_training_iterations=TRAINING_STEPS
     )
 
-    os.makedirs("outputs/eira_logs", exist_ok=True)
+    policy_manager = PolicyManager()
 
-    # --- Subtasks 생성 ---
+    os.makedirs("outputs/reward_shaping_logs", exist_ok=True)
+
+    # -------------------------------
+    # Subtask 생성
+    # -------------------------------
     subtask_plan = generate_subtasks(llm, TASK_DESCRIPTION)
     subtasks = parse_subtasks(subtask_plan)
-    print(subtask_plan)
 
     print("🧩 Subtasks:", subtasks)
 
-    # --- Subtask loop ---
+    # -------------------------------
+    # Subtask loop
+    # -------------------------------
     for s_idx, s in enumerate(subtasks):
         subtask = s["subtask"]
         success_code = s["success"]
 
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
-        print(f"🎯 SuccessCode: {success_code}")
 
-        subtask_log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}_log.txt"
-
-        with open(subtask_log_path, "w") as f:
-            f.write(f"Subtask: {subtask}\n")
-            f.write(f"SuccessCode: {success_code}\n")
-            f.write("="*50 + "\n")
+        # 🔥 LLM으로 policy label 생성
+        policy_label = generate_policy_label(llm, subtask)
+        print(f"🏷 Policy Label: {policy_label}")
 
         best_score = -float("inf")
         best_reward_code = None
+        best_model = None
 
         last_feedback = f"Focus ONLY on subtask: {subtask}"
 
@@ -183,10 +348,12 @@ Current Subtask:
 {subtask}
 
 Previous Reward Function:
-{best_reward_code if i > 0 else "None(It is the first iteration.)"}
+{best_reward_code if i > 0 else "None"}
 
 Feedback:
 {last_feedback}
+
+Improve the reward.
 
 Improve the previous reward function.
 DO NOT repeat the same logic.
@@ -212,25 +379,11 @@ If you fail, the code will crash.
             results = task_manager.train(reward_data)
             result = results[0]
 
-            # 🔥 실패 케이스
             if not result["success"]:
-                error_msg = result["exception"]
-
-                last_feedback = f"""
-        Your previous code failed with this error:
-
-        {error_msg}
-
-        Fix the reward function.
-        """
-
+                last_feedback = f"Error: {result['exception']}"
                 continue
-                # ✅ 성공 케이스
-            score = result["reward_mean"]
 
-            last_feedback = f"""
-        Score: {score}
-        """
+            score = result["reward_mean"]
 
             if score < 1:
                 last_feedback += "Reward rarely triggers. Add more dense intermediate rewards."
@@ -239,34 +392,26 @@ If you fail, the code will crash.
             else:
                 last_feedback += "Refine success condition and avoid reward hacking."
 
-            best_score = max(best_score, score)
+            # 🔥 여기 핵심: model 가져오기
+            best_state_dict = result["model_state_dict"]
+            if score > best_score:
+                best_score = score
+                best_reward_code = reward_strings[0]
+                policy_manager.save_policy(best_state_dict, policy_label)
+                print(f'Policy updated(score: {score})')
 
-            # 로그 저장
-            with open(subtask_log_path, "a") as f:
-                f.write(f"\n--- Iter {i+1} ---\n")
-                f.write(f"Score: {score}\n")
-                f.write("\n[Reward]\n")
-                f.write(reward_strings[0] + "\n")
+            last_feedback = f"Score: {score}"
+            print(last_feedback)
 
-        # -----------------------
-        # ✅ success rate 측정
-        # -----------------------
-        print("📊 Evaluating success rate...")
-
-        env = task_manager._processes[0]  # 실제론 worker에서 가져오는 구조 필요 (간단히 설명용)
-
-        # ⚠️ 실제론 env 접근 구조 바꿔야 함 (아래 참고)
-        success_rate = 0  # placeholder
-
-        with open(subtask_log_path, "a") as f:
-            f.write("\n🔥 BEST REWARD 🔥\n")
-            f.write(best_reward_code or "")
-            f.write(f"\nBest Score: {best_score:.4f}\n")
+        # -------------------------------
+        # ✅ policy 저장
+        # -------------------------------
+        if best_model is not None:
+            policy_manager.save_policy(best_model, policy_label)
 
         print(f"✅ Best Score: {best_score:.4f}")
 
     task_manager.close()
-    print("\n🏁 Done!")
 
 
 if __name__ == "__main__":

@@ -197,6 +197,8 @@ class EurekaTaskManager:
                 model = PPO("MultiInputPolicy", env, verbose=0, device=self._device)
                 model.learn(total_timesteps=self._max_training_iterations)
 
+                model_state_dict = model.policy.state_dict()
+
                 # -------------------------
                 # success eval
                 # -------------------------
@@ -237,7 +239,8 @@ class EurekaTaskManager:
                 result = {
                     "success": True,
                     "reward_mean": env._eureka_episode_sums["eureka_total_rewards"],
-                    "success_rate": success_rate
+                    "success_rate": success_rate,
+                    "model_state_dict": model_state_dict
                 }
 
             except Exception as e:
