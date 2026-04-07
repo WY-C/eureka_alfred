@@ -1,24 +1,5 @@
 Subtask: Pick up target object
 Policy Label: pick_up_target_object
-SuccessCode: any(obj["objectType"]=="TargetObject" for obj in metadata["inventoryObjects"])
+SuccessCode: any(obj["objectType"] == "TargetObject" for obj in metadata.get("inventoryObjects", []))
 PreconditionCode: True
 ============================================================
-
---- Iteration 1 ---
-Success Rate: 0.0000
-
-[Reward Function]
-def _get_rewards_eureka(env):
-    total_reward = 0.0
-    rewards_dict = {}
-
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    target_object_type = metadata.get("targetObjectType", "Unknown")
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        total_reward += 1.0
-        rewards_dict["picked_up_target_object"] = 1.0
-
-    return total_reward, rewards_dict
---------------------------------------------------

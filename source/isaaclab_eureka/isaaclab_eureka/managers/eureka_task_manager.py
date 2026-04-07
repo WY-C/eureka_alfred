@@ -21,6 +21,7 @@ class EurekaThorWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
         self.target_object = "Mug"
+        self._success_code = None
 
         if hasattr(env.action_space, "spaces"):
             self.action_space = env.action_space["action_index"]
@@ -51,15 +52,20 @@ class EurekaThorWrapper(gym.Wrapper):
         # -------------------------
         # 2. SUCCESS (subtask1: pick)
         # -------------------------
-        inventory = metadata.get("inventoryObjects", [])
-        target = self.target_object
+        # inventory = metadata.get("inventoryObjects", [])
+        # target = self.target_object
 
         info["is_success"] = False
 
-        if any(obj["objectType"] == target for obj in inventory):
-            reward += 10.0
-            terminated = True
-            info["is_success"] = True
+        if self._success_code:
+            try:
+                success = eval(self._success_code, {"metadata": metadata})
+                if success:
+                    reward += 10.0
+                    terminated = True
+                    info["is_success"] = True
+            except Exception as e:
+                print(f"⚠️ success eval error: {e}")
 
         return obs, reward, terminated, truncated, info
 
@@ -176,6 +182,7 @@ class EurekaTaskManager:
                 break
 
             reward_code = data["reward_code"]
+            env._success_code = data["success_code"]
 
             try:
                 # -------------------------

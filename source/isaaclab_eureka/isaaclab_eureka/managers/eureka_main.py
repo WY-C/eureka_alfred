@@ -361,8 +361,6 @@ def run_train_loop():
         max_training_iterations=TRAINING_STEPS
     )
 
-    policy_manager = PolicyManager()
-
     os.makedirs("outputs/reward_shaping_logs", exist_ok=True)
 
     # -------------------------------
@@ -439,6 +437,8 @@ def _get_rewards_eureka(env):
 
             results = task_manager.train(reward_data)
             result = results[0]
+            print(f'result[success]: {result["success"]}')
+            print(f'result[success_rate]: {result["success_rate"]}')
 
             # -------------------------------
             # 🔥 실패 케이스 로그
