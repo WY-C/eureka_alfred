@@ -20,7 +20,7 @@ def main():
     print("="*50)
 
     manager = EurekaTaskManager(
-        task="rl_thor/ITHOREnv-v0.1",
+        env="rl_thor/ITHOREnv-v0.1",
         num_processes=1,
         device="cuda",
         max_training_iterations=2000000

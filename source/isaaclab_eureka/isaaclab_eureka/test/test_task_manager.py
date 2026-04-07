@@ -60,7 +60,7 @@ class TestTaskManager(unittest.TestCase):
         task = "Isaac-Cartpole-Direct-v0"
         cls.num_parallel_runs = 2
         cls._task_manager = EurekaTaskManager(
-            task=task,
+            env=task,
             device="cuda",
             env_seed=42,
             rl_library="rsl_rl",

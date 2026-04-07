@@ -76,7 +76,7 @@ class Eureka:
 
         print("[INFO]: Setting up the Task Manager...")
         self._task_manager = EurekaTaskManager(
-            task=task,
+            env=task,
             device=device,
             env_seed=env_seed,
             rl_library=rl_library,
