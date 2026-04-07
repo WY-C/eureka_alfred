@@ -5,6 +5,8 @@ from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager
 from policy_manager import PolicyManager
 
+import torch
+
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-72B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1  
@@ -12,39 +14,92 @@ TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
 TRAINING_STEPS = 10000 
 
-TASK_DESCRIPTION = "Place an Mug on a CounterTop"
+TASK_DESCRIPTION = "Place a Target Object on a CounterTop"
 
 SYSTEM_PROMPT = """
 You are a world-class reward engineer.
 
-CRITICAL OUTPUT FORMAT:
+You MUST follow ALL rules strictly.
 
-You MUST return EXACTLY:
+========================================
+CRITICAL OUTPUT FORMAT
+========================================
 
-def _get_rewards_eureka(env):
-    total_reward = 0
-    rewards_dict = {}
-
-    ...
-
-    return total_reward, rewards_dict
-
-RULES:
-- NEVER return a single value
-- ALWAYS return TWO values
-- Second value MUST be dict
-- If you violate this → code will crash
-
-ENV:
-Use env.controller.last_event.metadata
-
-CRITICAL:
+You MUST output ONLY valid Python code.
 
 You MUST define EXACTLY this function:
 
 def _get_rewards_eureka(env):
+    total_reward = 0.0
+    rewards_dict = {}
 
-If you fail, the code will crash.
+    # your logic here
+
+    return total_reward, rewards_dict
+
+DO NOT include:
+- Any explanation
+- Any markdown (```python)
+- Any text outside the function
+
+========================================
+STRICT RULES
+========================================
+
+1. Function name MUST be exactly:
+   _get_rewards_eureka
+
+2. You MUST return exactly:
+   (total_reward, rewards_dict)
+
+3. rewards_dict MUST be a dict
+
+4. NEVER return a single value
+
+5. NEVER use print()
+
+6. NEVER import anything
+
+7. NEVER access keys directly like:
+   metadata["something"]
+
+   ALWAYS use safe access:
+   metadata.get("something", default)
+
+8. If a value might not exist, handle safely
+
+9. total_reward MUST always be a float
+
+========================================
+ENVIRONMENT
+========================================
+
+You can access:
+
+metadata = env.controller.last_event.metadata
+
+Example safe usage:
+
+inventory = metadata.get("inventoryObjects", [])
+agent = metadata.get("agent", {})
+
+========================================
+GOAL
+========================================
+
+Design a reward function to help the agent learn efficiently.
+
+Keep rewards dense and stable.
+
+========================================
+FAILURE CONDITIONS
+========================================
+
+If you violate ANY rule:
+- The system will crash
+- The result will be discarded
+
+So be precise.
 """
 
 # -------------------------------
@@ -324,19 +379,30 @@ def run_train_loop():
     for s_idx, s in enumerate(subtasks):
         subtask = s["subtask"]
         success_code = s["success"]
+        precondition_code = s["pre"]
 
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
 
-        # 🔥 LLM으로 policy label 생성
         policy_label = generate_policy_label(llm, subtask)
         print(f"🏷 Policy Label: {policy_label}")
 
+        # 🔥 로그 파일 생성
+        log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}.txt"
+        with open(log_path, "w") as f:
+            f.write(f"Subtask: {subtask}\n")
+            f.write(f"Policy Label: {policy_label}\n")
+            f.write(f"SuccessCode: {success_code}\n")
+            f.write(f"PreconditionCode: {precondition_code}\n")
+            f.write("=" * 60 + "\n")
+
         best_score = -float("inf")
         best_reward_code = None
-        best_model = None
 
         last_feedback = f"Focus ONLY on subtask: {subtask}"
 
+        # -------------------------------
+        # 🔥 Reward search loop
+        # -------------------------------
         for i in range(MAX_ITERATIONS):
             print(f"\n🔄 Iter {i+1}")
 
@@ -348,70 +414,127 @@ Current Subtask:
 {subtask}
 
 Previous Reward Function:
-{best_reward_code if i > 0 else "None"}
+{best_reward_code if best_reward_code else "None"}
 
 Feedback:
 {last_feedback}
 
 Improve the reward.
 
-Improve the previous reward function.
-DO NOT repeat the same logic.
-
 CRITICAL:
-
-You MUST define EXACTLY this function:
-
+You MUST define:
 def _get_rewards_eureka(env):
-
-If you fail, the code will crash.
 """
 
             response = llm.prompt(reward_prompt)
+            
             reward_strings = response["reward_strings"]
-
+            reward_code = response["raw_outputs"][0]
+            print("raw output : ", response)
             reward_data = [{
-                "reward_code": reward_strings[0],
+                "reward_code": reward_code,
                 "success_code": success_code,
-                "precondition_code": s["pre"]
+                "precondition_code": precondition_code
             }]
 
             results = task_manager.train(reward_data)
             result = results[0]
 
+            # -------------------------------
+            # 🔥 실패 케이스 로그
+            # -------------------------------
             if not result["success"]:
-                last_feedback = f"Error: {result['exception']}"
+                error_msg = result["exception"]
+                print(f"❌ Error: {error_msg}")
+
+                with open(log_path, "a") as f:
+                    f.write(f"\n--- Iteration {i+1} ---\n")
+                    f.write("❌ ERROR\n")
+                    f.write(f"{error_msg}\n")
+                    f.write("\n[Reward Function]\n")
+                    f.write(reward_code + "\n")
+                    f.write("-" * 50 + "\n")
+
+                last_feedback = f"Error: {error_msg}"
                 continue
 
-            score = result["reward_mean"]
+            # -------------------------------
+            # ✅ 성공 케이스
+            # -------------------------------
+            score = result["success_rate"]
+            print(f"📊 Success Rate: {score:.4f}")
 
-            if score < 1:
-                last_feedback += "Reward rarely triggers. Add more dense intermediate rewards."
-            elif score < 5:
-                last_feedback += "Reward exists but not guiding behavior. Add distance-based reward."
-            else:
-                last_feedback += "Refine success condition and avoid reward hacking."
-
-            # 🔥 여기 핵심: model 가져오기
-            best_state_dict = result["model_state_dict"]
+            # 🔥 best reward 업데이트
             if score > best_score:
                 best_score = score
-                best_reward_code = reward_strings[0]
-                policy_manager.save_policy(best_state_dict, policy_label)
-                print(f'Policy updated(score: {score})')
+                best_reward_code = reward_code
+                print("🔥 New best reward found!")
 
-            last_feedback = f"Score: {score}"
-            print(last_feedback)
+            # -------------------------------
+            # 🔥 로그 저장 (핵심)
+            # -------------------------------
+            with open(log_path, "a") as f:
+                f.write(f"\n--- Iteration {i+1} ---\n")
+                f.write(f"Success Rate: {score:.4f}\n")
+                f.write("\n[Reward Function]\n")
+                f.write(reward_code + "\n")
+                f.write("-" * 50 + "\n")
+
+            # feedback 업데이트
+            if score == 0:
+                last_feedback = "Agent never succeeds. Reward is not guiding behavior."
+            elif score < 0.3:
+                last_feedback = "Very low success rate. Add stronger guidance."
+            elif score < 0.7:
+                last_feedback = "Moderate success. Improve efficiency and consistency."
+            else:
+                last_feedback = "High success rate. Refine reward and avoid shortcuts."
+
+        print(f"\n🏁 Best reward selected (score: {best_score:.4f})")
 
         # -------------------------------
-        # ✅ policy 저장
+        # 🔥 BEST 결과 로그 추가
         # -------------------------------
-        if best_model is not None:
-            policy_manager.save_policy(best_model, policy_label)
+        with open(log_path, "a") as f:
+            f.write("\n\n🔥 BEST RESULT 🔥\n")
+            f.write(f"Best Score: {best_score:.4f}\n")
+            f.write("\n[Best Reward Function]\n")
+            f.write(best_reward_code + "\n")
+            f.write("=" * 60 + "\n")
 
-        print(f"✅ Best Score: {best_score:.4f}")
+        # -------------------------------
+        # 🔥 FINAL TRAINING
+        # -------------------------------
+        print("🚀 Training FINAL policy with best reward...")
+
+        final_reward_data = [{
+            "reward_code": best_reward_code,
+            "success_code": success_code,
+            "precondition_code": precondition_code
+        }]
+
+        # final_results = task_manager.train(final_reward_data)
+        # final_result = final_results[0]
+
+        # if not final_result["success"]:
+        #     print(f"❌ Final training failed: {final_result['exception']}")
+        #     continue
+
+        # final_model_state_dict = final_result["model_state_dict"]
+        final_model = task_manager.finalize_training(best_reward_code, success_code)
+
+        # 저장
+        torch.save(final_model.policy.state_dict(), f"./outputs/policies/{policy_label}.pt")
+
+        # -------------------------------
+        # 🔥 POLICY 저장
+        # -------------------------------
+        # policy_manager.save_policy(final_model_state_dict, policy_label)
+
+        print(f"✅ Policy saved: {policy_label}")
 
     task_manager.close()
+    print("\n🏁 All done!")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import gymnasium as gym
 import torch
 from stable_baselines3 import PPO
 import rl_thor
-def visualize_policy(policy_path='./outputs/policies/pick_up_mug.pt', task="rl_thor/ITHOREnv-v0.1", config_path=None):
+def visualize_policy(policy_path='./outputs/policies/place_mug_on_countertop.pt', task="rl_thor/ITHOREnv-v0.1", config_path=None):
     env = gym.make(
     "rl_thor/ITHOREnv-v0.1",
     config_path="/home/cau/Documents/rl_thor/config/environment_config.yaml",  # 🔥 절대경로
@@ -27,7 +27,7 @@ def visualize_policy(policy_path='./outputs/policies/pick_up_mug.pt', task="rl_t
     step = 0
 
     while not done:
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=False)
 
         obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
