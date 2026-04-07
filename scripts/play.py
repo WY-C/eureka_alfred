@@ -6,8 +6,12 @@
 
 import argparse
 import math
+import os
+import sys
 
-from isaaclab_eureka.utils import get_freest_gpu
+sys.path.append(os.path.abspath(".."))
+
+from source.isaaclab_eureka.isaaclab_eureka.utils import get_freest_gpu
 
 
 def main(args_cli):

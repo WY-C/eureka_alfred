@@ -1,0 +1,5 @@
+Subtask: Pick up target object
+Policy Label: pick_up_target_object
+SuccessCode: any(obj["objectType"] == "TargetObject" for obj in metadata.get("inventoryObjects", []))
+PreconditionCode: True
+============================================================
