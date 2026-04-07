@@ -90,29 +90,144 @@ STRICT:
         return response["raw_outputs"][0]
     return str(response)
 
-def generate_policy_label(llm, subtask):
-    prompt = f"""
+import json
+import random
+
+def validate_output(data):
+    label = data.get("label", "").strip()
+    category = data.get("category", "").strip()
+
+    # label 기본 처리
+    if not label:
+        label = "unknown_policy"
+
+    # snake_case 보정
+    label = label.lower().replace(" ", "_")
+
+    # category 검증
+    if category not in CATEGORIES:
+        category = "Moveable"  # fallback (적당한 default)
+
+    return {
+        "label": label,
+        "category": category
+    }
+
+def parse_policy_output(text):
+    text = text.strip()
+
+    # 1. JSON 직접 파싱 시도
+    try:
+        data = json.loads(text)
+        return validate_output(data)
+    except:
+        pass
+
+    # 2. JSON 일부만 있는 경우 추출
+    try:
+        json_str = re.search(r"\{.*\}", text, re.DOTALL).group()
+        data = json.loads(json_str)
+        return validate_output(data)
+    except:
+        pass
+
+    # 3. fallback (line parsing)
+    label = None
+    category = None
+
+    for line in text.split("\n"):
+        if "label" in line.lower():
+            label = line.split(":")[-1].strip().replace('"', '')
+        if "category" in line.lower():
+            category = line.split(":")[-1].strip().replace('"', '')
+
+    return validate_output({
+        "label": label,
+        "category": category
+    })
+
+CATEGORIES = [
+    "breakable", "cookable", "dirtyable", "fillable",
+    "moveable", "openable", "pickupable", "receptacle",
+    "sliceable", "toggleable", "usedUp", "navigate"
+]
+
+def generate_policy_label_and_category(llm, subtask):
+    prompt = f"""  
 Subtask: {subtask}
 
-Generate a short, general policy name.
+You are generating a GENERAL REUSABLE POLICY LABEL for a robotics agent.
 
-Rules:
-- snake_case
-- verb + object
-- generalizable
+IMPORTANT GOAL:
+- The label must describe a reusable SKILL
+- NOT a specific object instance
 
+--------------------------------------------------
+STEP 1: Identify action type
 Examples:
-pick_up_object
-navigate_to_object
-place_object_on_receptacle
+- pick up
+- navigate
+- place
+- open
+- toggle
+- slice
 
-ONLY return label.
+STEP 2: Abstract object into CATEGORY LEVEL
+NEVER use specific objects like:
+❌ mug, cup, apple, plate, knife, door handle
+
+Instead use:
+✔ object
+✔ receptacle
+✔ container
+✔ tool
+✔ target_object
+
+--------------------------------------------------
+RULES:
+- label MUST be snake_case
+- label MUST be (verb + abstract_noun)
+- label MUST NOT contain any specific object name
+- label MUST be reusable across environments
+- category MUST be one from the list
+
+--------------------------------------------------
+CATEGORY LIST:
+{CATEGORIES}
+
+--------------------------------------------------
+BAD EXAMPLES:
+❌ pick_up_mug
+❌ pick_up_red_cup
+❌ navigate_to_kitchen_sink
+
+GOOD EXAMPLES:
+✔ pick_up_object
+✔ navigate_to_object
+✔ place_object_on_receptacle
+✔ open_receptacle
+✔ toggle_object
+
+--------------------------------------------------
+OUTPUT FORMAT (STRICT JSON):
+{{
+    "label": "...",
+    "category": "..."
+}}
 """
+
     res = llm.prompt(prompt)
 
     if isinstance(res, dict):
-        return res["raw_outputs"][0].strip()
-    return str(res).strip()
+        text = res["raw_outputs"][0]
+    else:
+        text = str(res)
+
+    return parse_policy_output(text)
+
+def set_random_target(category, task_manager:EurekaTaskManager):
+    available_target_list = task_manager.get_available_target_list(category)
+    return available_target_list[random.randint(0, len(available_target_list)-1)]
 
 # -------------------------------
 # ✅ 파싱
@@ -170,8 +285,6 @@ def run_train_loop():
         max_training_iterations=TRAINING_STEPS
     )
 
-    policy_manager = PolicyManager()
-
     os.makedirs("outputs/reward_shaping_logs", exist_ok=True)
 
     # -------------------------------
@@ -192,8 +305,12 @@ def run_train_loop():
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
 
         # 🔥 LLM으로 policy label 생성
-        policy_label = generate_policy_label(llm, subtask)
-        print(f"🏷 Policy Label: {policy_label}")
+        subtask_info = generate_policy_label_and_category(llm, subtask) # {'label': ..., 'category': ...}
+        print(f"🏷 Subtask Label(generalized): {subtask_info['label']}")
+        print(f"🏷 Subtask Category: {subtask_info['category']}")
+
+        target_object_type = set_random_target(subtask_info['category'], task_manager)
+        print(f'Target object: {target_object_type}')
 
         best_score = -float("inf")
         best_reward_code = None

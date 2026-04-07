@@ -16,12 +16,9 @@ try:
 except ImportError:
     print("❌ rl_thor import error")
 
-# 🔥 에이전트가 학습할 타겟 객체들의 전체 사전
-TARGET_VOCAB = [
-    "Mug", "Apple", "Tomato", "Bowl", "Laptop", 
-    "Book", "CellPhone", "Pen", "Pencil", "Remote",
-    "Statue", "Vase", "Cup", "Plate", "SoapBottle"
-]
+AVAILABLE_OBJECT_TYPES = ["Apple", "Bowl", "Bread", "ButterKnife", "Cabinet", "CoffeeMachine", "CounterTop", "Cup", "DishSponge", "Egg", "Faucet", "Floor", "Fork", "Fridge", "GarbageCan",
+                "Knife", "Lettuce", "LightSwitch", "Microwave", "Mug", "Pan", "PepperShaker", "Plate", "Pot", "Potato", "SaltShaker", "Sink", "SinkBasin", "SoapBottle",
+                "Spatula", "Spoon", "StoveBurner", "StoveKnob", "Toaster", "Tomato"]
 
 # -------------------------
 # Wrapper
@@ -39,13 +36,13 @@ class EurekaThorWrapper(gym.Wrapper):
         
         if isinstance(orig_obs_space, gym.spaces.Dict):
             new_spaces = dict(orig_obs_space.spaces)
-            new_spaces["goal_index"] = gym.spaces.Discrete(len(TARGET_VOCAB))
+            new_spaces["goal_index"] = gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
             self.observation_space = gym.spaces.Dict(new_spaces)
             self._is_obs_dict = True
         else:
             self.observation_space = gym.spaces.Dict({
                 "vision": orig_obs_space,
-                "goal_index": gym.spaces.Discrete(len(TARGET_VOCAB))
+                "goal_index": gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
             })
             self._is_obs_dict = False
 
@@ -58,7 +55,7 @@ class EurekaThorWrapper(gym.Wrapper):
 
     @property
     def target_object_type(self):
-        return getattr(self.env.unwrapped, "target_object_type", TARGET_VOCAB)
+        return getattr(self.env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
 
     def action(self, act):
         return {"action_index": int(act)}
@@ -79,8 +76,8 @@ class EurekaThorWrapper(gym.Wrapper):
     def _inject_goal_to_obs(self, obs):
         target_name = self.target_object_type
         
-        if target_name in TARGET_VOCAB:
-            goal_idx = TARGET_VOCAB.index(target_name)
+        if target_name in AVAILABLE_OBJECT_TYPES:
+            goal_idx = AVAILABLE_OBJECT_TYPES.index(target_name)
         else:
             goal_idx = 0 
             
@@ -128,14 +125,14 @@ class EurekaThorWrapper(gym.Wrapper):
         
         available_targets = list(set(
             obj.get("objectType") for obj in objects 
-            if obj.get("pickupable") and obj.get("objectType") in TARGET_VOCAB
+            if obj.get("pickupable") and obj.get("objectType") in AVAILABLE_OBJECT_TYPES
         ))
         
         if available_targets:
             chosen_target = random.choice(available_targets)
             self.env.unwrapped.target_object_type = chosen_target
         else:
-            self.env.unwrapped.target_object_type = TARGET_VOCAB
+            self.env.unwrapped.target_object_type = AVAILABLE_OBJECT_TYPES
             
         obs = self._inject_goal_to_obs(obs)
         return obs, info
@@ -194,6 +191,13 @@ class EurekaTaskManager:
         self._max_training_iterations = max_training_iterations
         self._config_path = config_path or os.path.expanduser("~/Documents/rl_thor/config/environment_config.yaml")
 
+        raw_env = gym.make(
+                    self._env,
+                    config_path=self._config_path,
+                    config_override={"max_episode_steps": 500}
+        )
+        self.thor_env = EurekaThorWrapper(raw_env)
+
         self._rewards_queues = [multiprocessing.Queue() for _ in range(self._num_processes)]
         self._results_queue = multiprocessing.Queue()
         self.termination_event = multiprocessing.Event()
@@ -215,15 +219,18 @@ class EurekaTaskManager:
             results[idx] = res
 
         return results
+    
+    def get_available_target_list(self, category):
+        proper_objects = []
+        for obj in self.thor_env.unwrapped.controller.last_event.metadata['objects']:
+            if category == 'navigation':
+                proper_objects.append(obj['objectType'])
+            elif obj[category] and obj['objectType'] in AVAILABLE_OBJECT_TYPES:
+                proper_objects.append(obj['objectType'])
+        
+        return proper_objects
 
     def _worker(self, idx, queue):
-        raw_env = gym.make(
-            self._env,
-            config_path=self._config_path,
-            config_override={"max_episode_steps": 500}
-        )
-        env = EurekaThorWrapper(raw_env)
-
         while not self.termination_event.is_set():
             data = queue.get()
             if data == "Stop":
@@ -243,15 +250,15 @@ class EurekaTaskManager:
                 if "_get_rewards_eureka" not in ns:
                     raise ValueError("LLM did not define _get_rewards_eureka")
 
-                env._get_rewards_eureka = ns["_get_rewards_eureka"]
+                self.thor_env._get_rewards_eureka = ns["_get_rewards_eureka"]
 
                 MAX_RESET_TRY = 20
                 found = False
 
                 for _ in range(MAX_RESET_TRY):
-                    obs, _ = env.reset()
-                    metadata = env.unwrapped.controller.last_event.metadata
-                    current_target = getattr(env.unwrapped, "target_object_type", TARGET_VOCAB)
+                    obs, _ = self.thor_env.reset()
+                    metadata = self.thor_env.unwrapped.controller.last_event.metadata
+                    current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
                     
                     try:
                         # 🔥 수정됨: precondition 평가 시에도 TARGET_TYPE 주입
@@ -266,7 +273,7 @@ class EurekaTaskManager:
                 if not found:
                     print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
 
-                model = PPO("MultiInputPolicy", env, verbose=0, device=self._device)
+                model = PPO("MultiInputPolicy", self.thor_env, verbose=0, device=self._device)
                 model.learn(total_timesteps=self._max_training_iterations)
                 model_state_dict = model.policy.state_dict()
 
@@ -275,9 +282,9 @@ class EurekaTaskManager:
 
                 for _ in range(episodes):
                     for _ in range(MAX_RESET_TRY):
-                        obs, _ = env.reset()
-                        metadata = env.unwrapped.controller.last_event.metadata
-                        current_target = getattr(env.unwrapped, "target_object_type", TARGET_VOCAB)
+                        obs, _ = self.thor_env.reset()
+                        metadata = self.thor_env.unwrapped.controller.last_event.metadata
+                        current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
                         
                         try:
                             # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
@@ -289,11 +296,11 @@ class EurekaTaskManager:
                     done = False
                     while not done:
                         action, _ = model.predict(obs)
-                        obs, _, terminated, truncated, _ = env.step(action)
+                        obs, _, terminated, truncated, _ = self.thor_env.step(action)
                         done = terminated or truncated
 
-                        metadata = env.unwrapped.controller.last_event.metadata
-                        current_target = getattr(env.unwrapped, "target_object_type", TARGET_VOCAB)
+                        metadata = self.thor_env.unwrapped.controller.last_event.metadata
+                        current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
 
                         try:
                             if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
@@ -307,7 +314,7 @@ class EurekaTaskManager:
 
                 result = {
                     "success": True,
-                    "reward_mean": env._eureka_episode_sums["eureka_total_rewards"],
+                    "reward_mean": self.thor_env._eureka_episode_sums["eureka_total_rewards"],
                     "success_rate": success_rate,
                     "model_state_dict": model_state_dict
                 }
