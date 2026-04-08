@@ -50,6 +50,8 @@ class EurekaThorWrapper(gym.Wrapper):
         self._get_rewards_eureka = None
         self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
 
+        self.last_obs = None
+
     @property
     def controller(self):
         return self.env.unwrapped.controller
@@ -71,14 +73,35 @@ class EurekaThorWrapper(gym.Wrapper):
                 return obj
 
         return None
+    
+    def get_interacted_objects(self):
+        metadata = self.controller.last_event.metadata
+
+        interacted = {
+            "inventory": metadata.get("inventoryObjects", []),
+            "opened": [],
+            "toggled": [],
+            "broken": []
+        }
+
+        for obj in metadata.get("objects", []):
+            if obj.get("isOpen", False):
+                interacted["opened"].append(obj)
+
+            if obj.get("isToggled", False):
+                interacted["toggled"].append(obj)
+
+            if obj.get("isBroken", False):
+                interacted["broken"].append(obj)
+
+        return interacted
 
     # -------------------------
     # 🔥 observation 생성
     # -------------------------
     def build_observation(self, target):
         if target is None:
-            # fallback
-            return {
+            obs = {
                 "env_obs": np.zeros((300,300,3), dtype=np.uint8),
                 "center_x": np.array([0.0], dtype=np.float32),
                 "center_y": np.array([0.0], dtype=np.float32),
@@ -87,11 +110,13 @@ class EurekaThorWrapper(gym.Wrapper):
                 "object_type": np.int64(0),
                 "visible": np.int64(0),
             }
+            self.last_obs = obs
+            return obs
 
         obj_id = OBJECT_TO_ID.get(target["objectType"], 0)
         center = target["axisAlignedBoundingBox"]["center"]
 
-        return {
+        obs = {
             "env_obs": np.zeros((300,300,3), dtype=np.uint8),
 
             "center_x": np.array([center["x"]], dtype=np.float32),
@@ -103,6 +128,11 @@ class EurekaThorWrapper(gym.Wrapper):
             "object_type": np.int64(obj_id),
             "visible": np.int64(target["visible"]),
         }
+
+        # 🔥 핵심: 저장
+        self.last_obs = obs
+
+        return obs
 
     # -------------------------
     # step
@@ -116,7 +146,9 @@ class EurekaThorWrapper(gym.Wrapper):
         target = self.find_target_object()
         obs = self.build_observation(target)
 
-        # 🔥 reward shaping 적용
+        self.last_obs = obs  # 🔥 핵심
+
+        # reward shaping
         if self._get_rewards_eureka is not None:
             r, _ = self._get_rewards_eureka(self)
             reward += r
@@ -140,19 +172,24 @@ class EurekaThorWrapper(gym.Wrapper):
         return obs, info
 
 def clean_code(code):
-    while isinstance(code, list) and len(code) > 0:
-        code = code
-    if not isinstance(code, str):
-        code = str(code)
-        
+    # 1. list면 첫 번째 요소 사용
+    if isinstance(code, list):
+        code = code[0]
+
+    # 2. 무조건 string으로 변환
+    code = str(code)
+
     code = code.strip()
 
+    # 3. ``` 제거
     if code.startswith("```"):
-        parts = code.split("```")
-        if len(parts) > 1:
-            code = parts
-            if code.startswith("python\n") or code.startswith("python"):
-                code = code.replace("python", "", 1).strip()
+        code = code.strip("`")
+
+        # python prefix 제거
+        if code.startswith("python"):
+            code = code[len("python"):].strip()
+
+    # 4. 끝에 ``` 제거
     if code.endswith("```"):
         code = code[:-3]
 
@@ -201,8 +238,6 @@ class EurekaTaskManager:
         )
         self.thor_env = EurekaThorWrapper(raw_env)
         
-        self.thor_env = EurekaThorWrapper(raw_env)
-
         target_object_type = self.set_random_target(category)
         self.set_target_object(target_object_type)
 

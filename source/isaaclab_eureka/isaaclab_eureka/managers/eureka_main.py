@@ -1,6 +1,8 @@
 # eureka_main.py
 import os
 import re
+import multiprocessing as mp
+
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager
 from policy_manager import PolicyManager
@@ -35,15 +37,31 @@ RULES:
 - Second value MUST be dict
 - If you violate this → code will crash
 
-TARGET OBJECT:
+IMPORTANT:
 
 - The target object type is available as:
-    env.target_object_type
+    TARGET_TYPE
 
-- Example:
-    if obj["objectType"] == env.target_object_type:
+- DO NOT use:
+    targetObjectType
+    obj["targetObjectType"]
+
+- Always compare using:
+    obj["objectType"] == TARGET_TYPE
 
 NEVER hardcode object names.
+
+    
+- All observation values are 1D arrays of size 1
+- ALWAYS use index [0]
+
+Correct:
+    env.last_obs["distance"][0]
+    env.last_obs["center_x"][0]
+
+WRONG:
+    env.last_obs["distance"][1]
+    env.last_obs["center_x"][1]
 
 ENV & GENERALIZATION:
 - The target object changes every episode.
@@ -59,6 +77,30 @@ You MUST define EXACTLY this function:
 def _get_rewards_eureka(env):
 
 If you fail, the code will crash.
+
+IMPORTANT (VERY IMPORTANT):
+
+The agent ONLY sees the observation.
+
+You MUST design reward using:
+
+env.last_obs
+
+Available fields:
+
+- env.last_obs["distance"] → distance to target
+- env.last_obs["visible"] → 0 or 1
+- env.last_obs["center_x"], ["center_y"], ["center_z"]
+
+DO NOT rely only on metadata.
+Use observation-based reward shaping.
+
+Example:
+
+if env.last_obs["visible"]:
+    total_reward += 0.5
+
+total_reward += -env.last_obs["distance"][0]
 """
 
 # -------------------------------
@@ -377,15 +419,40 @@ If you fail, the code will crash.
                 continue
 
             score = result["reward_mean"]
-            with open(log_path, "a") as f:
-                f.write(f"Score: {score}, SuccessRate: {result['success_rate']}\n\n")  
+            success_rate = result["success_rate"]
 
-            if score < 1:
-                last_feedback += "Reward rarely triggers. Add more dense intermediate rewards."
-            elif score < 5:
-                last_feedback += "Reward exists but not guiding behavior. Add distance-based reward."
+            with open(log_path, "a") as f:
+                f.write(f"Score: {score}, SuccessRate: {success_rate}\n\n")  
+
+            # 🔥 success_rate 기반 feedback
+            if success_rate < 0.1:
+                last_feedback = (
+                    "The agent almost never succeeds. "
+                    "Add strong and dense intermediate rewards. "
+                    "Guide the agent step-by-step (visibility, distance, interaction)."
+                )
+
+            elif success_rate < 0.5:
+                last_feedback = (
+                    "The agent sometimes succeeds but is unstable. "
+                    "Improve reward shaping to guide behavior more consistently. "
+                    "Use distance-based shaping and intermediate milestones."
+                )
+
+            elif success_rate < 0.9:
+                last_feedback = (
+                    "The agent often succeeds but not reliably. "
+                    "Refine the reward to reduce randomness and improve consistency. "
+                    "Penalize unnecessary actions and encourage efficient behavior."
+                )
+
             else:
-                last_feedback += "Refine success condition and avoid reward hacking."
+                last_feedback = (
+                    "The agent succeeds reliably. "
+                    "Now refine the reward to improve efficiency and avoid reward hacking."
+                )
+
+            print(f"Score: {score}, SuccessRate: {success_rate}")
 
             # 🔥 여기 핵심: model 가져오기
             best_state_dict = result["model_state_dict"]
@@ -416,4 +483,5 @@ If you fail, the code will crash.
 
 
 if __name__ == "__main__":
+    # mp.set_start_method("spawn", force=True)
     run_train_loop()

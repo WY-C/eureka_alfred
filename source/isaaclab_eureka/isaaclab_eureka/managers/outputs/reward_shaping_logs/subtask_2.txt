@@ -1,172 +1,23 @@
-Subtask: Place target object on countertop
-Policy Label: place_object_on_countertop
-SuccessCode: any(obj["objectType"] == "TargetObject" and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata.get("objects", []))
-PreconditionCode: any(obj["objectType"] == "TargetObject" for obj in metadata.get("inventoryObjects", []))
-============================================================
+Subtask: Place Mug on CounterTop
+Subtask label: place_object_on_receptacle
+Category: receptacle
+==================================================
 
---- Iteration 1 ---
-Score: 2.0000
-
-[Reward Function]
+[Iter 1]
 def _get_rewards_eureka(env):
-    total_reward = 0.0
+    total_reward = 0
     rewards_dict = {}
 
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    objects = metadata.get("objects", [])
-
-    target_object_type = "TargetObject"  # Define the target object type
-    countertop_receptacles = [obj for obj in objects if obj.get("objectType") == "CounterTop"]
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        if any(obj["objectType"] == target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
-            total_reward += 1.0
-            rewards_dict["success"] = 1.0
-        else:
-            total_reward -= 0.1
-            rewards_dict["failure"] = -0.1
-
-    return total_reward, rewards_dict
---------------------------------------------------
-
---- Iteration 2 ---
-Score: 0.0000
-
-[Reward Function]
-def _get_rewards_eureka(env):
-    total_reward = 0.0
-    rewards_dict = {}
-
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    objects = metadata.get("objects", [])
-
-    target_object_type = "TargetObject"  # Define the target object type
-    countertop_receptacles = [obj for obj in objects if obj.get("objectType") == "CounterTop"]
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        if any(obj["objectType"] == target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
-            total_reward += 1.0
-            rewards_dict["success"] = 1.0
-        else:
-            distance_to_countertop = min([abs(agent["position"]["x"] - ct["position"]["x"]) + abs(agent["position"]["z"] - ct["position"]["z"]) for ct in countertop_receptacles], default=1.0)
-            total_reward -= 0.1 * distance_to_countertop
-            rewards_dict["distance_penalty"] = -0.1 * distance_to_countertop
-
-    return total_reward, rewards_dict
---------------------------------------------------
-
---- Iteration 3 ---
-Score: 0.0000
-
-[Reward Function]
-def _get_rewards_eureka(env):
-    total_reward = 0.0
-    rewards_dict = {}
-
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    objects = metadata.get("objects", [])
-
-    target_object_type = "TargetObject"  # Define the target object type
-    countertop_receptacles = [obj for obj in objects if obj.get("objectType") == "CounterTop"]
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        total_reward += 0.2
-        rewards_dict["pickup"] = 0.2
-
-    if any(obj["objectType"] == target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
-        total_reward += 1.0
-        rewards_dict["success"] = 1.0
-    elif any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        total_reward -= 0.1
-        rewards_dict["failure"] = -0.1
-
-    return total_reward, rewards_dict
---------------------------------------------------
-
---- Iteration 4 ---
-Score: 0.0000
-
-[Reward Function]
-def _get_rewards_eureka(env):
-    total_reward = 0.0
-    rewards_dict = {}
-
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    objects = metadata.get("objects", [])
-
-    target_object_type = "TargetObject"  # Define the target object type
-    countertop_receptacles = [obj for obj in objects if obj.get("objectType") == "CounterTop"]
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
+    if env.last_obs["visible"]:
         total_reward += 0.5
-        rewards_dict["picked_up"] = 0.5
 
-        if any(obj["objectType"] == target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
-            total_reward += 0.5
-            rewards_dict["success"] = 0.5
-        else:
-            total_reward -= 0.1
-            rewards_dict["failure"] = -0.1
+    total_reward += -env.last_obs["distance"][0]
 
-    return total_reward, rewards_dict
---------------------------------------------------
+    if any(obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in env.controller.last_event.metadata["objects"]):
+        total_reward += 10
 
---- Iteration 5 ---
-Score: 0.0000
-
-[Reward Function]
-def _get_rewards_eureka(env):
-    total_reward = 0.0
-    rewards_dict = {}
-
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    objects = metadata.get("objects", [])
-
-    target_object_type = "TargetObject"  # Define the target object type
-    countertop_receptacles = [obj for obj in objects if obj.get("objectType") == "CounterTop"]
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        total_reward += 0.1
-        rewards_dict["picked_up_target"] = 0.1
-
-    if any(obj["objectType"] == target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
-        total_reward += 1.0
-        rewards_dict["success"] = 1.0
-    elif any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        total_reward -= 0.1
-        rewards_dict["not_on_countertop"] = -0.1
+    rewards_dict["placement_reward"] = total_reward
 
     return total_reward, rewards_dict
---------------------------------------------------
 
 
-🔥 BEST RESULT 🔥
-Best Score: 2.0000
-
-[Best Reward Function]
-def _get_rewards_eureka(env):
-    total_reward = 0.0
-    rewards_dict = {}
-
-    metadata = env.controller.last_event.metadata
-    inventory_objects = metadata.get("inventoryObjects", [])
-    objects = metadata.get("objects", [])
-
-    target_object_type = "TargetObject"  # Define the target object type
-    countertop_receptacles = [obj for obj in objects if obj.get("objectType") == "CounterTop"]
-
-    if any(obj["objectType"] == target_object_type for obj in inventory_objects):
-        if any(obj["objectType"] == target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
-            total_reward += 1.0
-            rewards_dict["success"] = 1.0
-        else:
-            total_reward -= 0.1
-            rewards_dict["failure"] = -0.1
-
-    return total_reward, rewards_dict
-============================================================
