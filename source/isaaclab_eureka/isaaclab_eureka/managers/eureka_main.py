@@ -225,10 +225,6 @@ OUTPUT FORMAT (STRICT JSON):
 
     return parse_policy_output(text)
 
-def set_random_target(category, task_manager:EurekaTaskManager):
-    available_target_list = task_manager.get_available_target_list(category)
-    return available_target_list[random.randint(0, len(available_target_list)-1)]
-
 # -------------------------------
 # ✅ 파싱
 # -------------------------------
@@ -280,11 +276,6 @@ def run_train_loop():
         system_prompt=SYSTEM_PROMPT
     )
 
-    task_manager = EurekaTaskManager(
-        num_processes=NUM_SUGGESTIONS,
-        max_training_iterations=TRAINING_STEPS
-    )
-
     os.makedirs("outputs/reward_shaping_logs", exist_ok=True)
 
     # -------------------------------
@@ -309,7 +300,13 @@ def run_train_loop():
         print(f"🏷 Subtask Label(generalized): {subtask_info['label']}")
         print(f"🏷 Subtask Category: {subtask_info['category']}")
 
-        target_object_type = set_random_target(subtask_info['category'], task_manager)
+        task_manager = EurekaTaskManager(
+            num_processes=NUM_SUGGESTIONS,
+            max_training_iterations=TRAINING_STEPS,
+            category=subtask_info['category']
+        )
+        target_object_type = task_manager._target_object_type
+
         print(f'Target object: {target_object_type}')
 
         best_score = -float("inf")

@@ -16,9 +16,11 @@ try:
 except ImportError:
     print("❌ rl_thor import error")
 
-AVAILABLE_OBJECT_TYPES = ["Apple", "Bowl", "Bread", "ButterKnife", "Cabinet", "CoffeeMachine", "CounterTop", "Cup", "DishSponge", "Egg", "Faucet", "Floor", "Fork", "Fridge", "GarbageCan",
+AVAILABLE_OBJECT_TYPES = ["Unknown", "Apple", "Bowl", "Bread", "ButterKnife", "Cabinet", "CoffeeMachine", "CounterTop", "Cup", "DishSponge", "Egg", "Faucet", "Floor", "Fork", "Fridge", "GarbageCan",
                 "Knife", "Lettuce", "LightSwitch", "Microwave", "Mug", "Pan", "PepperShaker", "Plate", "Pot", "Potato", "SaltShaker", "Sink", "SinkBasin", "SoapBottle",
                 "Spatula", "Spoon", "StoveBurner", "StoveKnob", "Toaster", "Tomato"]
+
+OBJECT_TO_ID = {obj: i for i, obj in enumerate(AVAILABLE_OBJECT_TYPES)}
 
 # -------------------------
 # Wrapper
@@ -33,18 +35,44 @@ class EurekaThorWrapper(gym.Wrapper):
             self.action_space = env.action_space
             
         orig_obs_space = self.env.observation_space
+
+        self.observation_space = gym.spaces.Dict({
+            # optional: RGB 있으면 유지
+            "env_obs": gym.spaces.Box(
+                low=0, high=255,
+                shape=(300, 300, 3),
+                dtype=np.uint8
+            ),
+
+            # flattened position
+            "center_x": gym.spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
+            "center_y": gym.spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
+            "center_z": gym.spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
+
+            "distance": gym.spaces.Box(0.0, np.inf, shape=(), dtype=np.float32),
+
+            "object_type": gym.spaces.Discrete(len(OBJECT_TO_ID)),
+            "visible": gym.spaces.Discrete(2),
+
+            "goal_index": gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
+        })
+
+        # print(orig_obs_space)
         
-        if isinstance(orig_obs_space, gym.spaces.Dict):
-            new_spaces = dict(orig_obs_space.spaces)
-            new_spaces["goal_index"] = gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
-            self.observation_space = gym.spaces.Dict(new_spaces)
-            self._is_obs_dict = True
-        else:
-            self.observation_space = gym.spaces.Dict({
-                "vision": orig_obs_space,
-                "goal_index": gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
-            })
-            self._is_obs_dict = False
+        # if isinstance(orig_obs_space, gym.spaces.Dict):
+        #     new_spaces = dict(orig_obs_space.spaces)
+        #     new_spaces["goal_index"] = gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
+        #     self.observation_space = gym.spaces.Dict(new_spaces)
+        #     self._is_obs_dict = True
+        # else:
+        #     self.observation_space = gym.spaces.Dict({
+        #         "center_position": self.controller.last_event.metadata["objects"]["axisAlignedBoundingBox"]["center"],
+        #         "distance": self.controller.last_event.metadata["objects"]["distance"],
+        #         "target_object": {
+        #             "object_type": self.controller.last_event.metadata["objects"]["axisAlignedBoundingBox"]["center"]
+        #         }
+        #     })
+        #     self._is_obs_dict = False
 
         self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
         self._get_rewards_eureka = None
@@ -60,81 +88,83 @@ class EurekaThorWrapper(gym.Wrapper):
     def action(self, act):
         return {"action_index": int(act)}
     
-    def get_interacted_objects(self):
-        metadata = self.env.unwrapped.controller.last_event.metadata
-        objects = metadata.get("objects", [])
-        
-        interactable_state = {
-            "inventory": metadata.get("inventoryObjects", []),
-            "pickupable_types": list(set(obj.get("objectType") for obj in objects if obj.get("pickupable"))),
-            "openable_types": list(set(obj.get("objectType") for obj in objects if obj.get("openable"))),
-            "toggleable_types": list(set(obj.get("objectType") for obj in objects if obj.get("toggleable"))),
-            "receptacle_types": list(set(obj.get("objectType") for obj in objects if obj.get("receptacle")))
-        }
-        return interactable_state
+    def set_target_object(self, target_object_type):
+        for obs in self.controller.last_event.metadata['objects']:
+            if obs['objectType'] == target_object_type:
+                self.target_object = obs
+                break
+    
+    def build_observation(self, target=None):
+        obj_type = target["objectType"]
+        obj_id = OBJECT_TO_ID.get(obj_type, OBJECT_TO_ID["Unknown"])
 
+        center = target["axisAlignedBoundingBox"]["center"]
+
+        distance = target["distance"]
+        visible = target["visible"]
+
+        return {
+            "env_obs": self.env_obs if hasattr(self, "env_obs") else np.zeros((300,300,3), dtype=np.uint8),
+
+            "center_x": np.float32(center["x"]),
+            "center_y": np.float32(center["y"]),
+            "center_z": np.float32(center["z"]),
+
+            "distance": np.float32(distance),
+
+            "object_type": np.int64(obj_id),
+            "visible": np.int64(visible),
+            "goal_index": np.int64(OBJECT_TO_ID.get(self.target_object['objectType']))
+        }
+
+    def get_observation(self):
+        self.set_target_object(self.target_object['objectType'])
+
+        target = self.target_object
+        obs = self.build_observation(target)
+
+        # print(obs)
+        return obs
+    
     def _inject_goal_to_obs(self, obs):
         target_name = self.target_object_type
-        
-        if target_name in AVAILABLE_OBJECT_TYPES:
-            goal_idx = AVAILABLE_OBJECT_TYPES.index(target_name)
-        else:
-            goal_idx = 0 
-            
-        goal_array = np.array(goal_idx, dtype=np.int64)
 
-        if self._is_obs_dict:
-            obs["goal_index"] = goal_array
-            return obs
-        else:
-            return {
-                "vision": obs,
-                "goal_index": goal_array
-            }
+        goal_idx = OBJECT_TO_ID.get(target_name, 0)
+        goal_array = np.int64(goal_idx)
+
+        # 반드시 dict 보장
+        if not isinstance(obs, dict):
+            raise ValueError("Observation must be dict for SB3 MultiInputPolicy")
+
+        obs = dict(obs)  # safety copy
+
+        obs["goal_index"] = goal_array
+
+        return obs
 
     def step(self, action):
-        obs, _, terminated, truncated, info = self.env.step(self.action(action))
-        obs = self._inject_goal_to_obs(obs)
+        self.env.step(action)
 
-        reward = 0
-        rewards_dict = {}
+        self.set_target_object(self.target_object['objectType'])
+        target = self.target_object
 
-        if self._get_rewards_eureka:
-            try:
-                result = self._get_rewards_eureka(self)
+        obs = self.build_observation(target)
 
-                if isinstance(result, tuple) and len(result) == 2:
-                    reward, rewards_dict = result
-                else:
-                    print("⚠️ Invalid reward return format. Using fallback.")
-                    reward = float(result) if isinstance(result, (int, float)) else 0.0
-                    rewards_dict = {}
-            except Exception as e:
-                print(f"⚠️ reward error: {e}")
-                raise RuntimeError(f"Reward function failed: {e}")
+        reward = self.compute_reward()
+        done = self.is_done()
+        info = {}
 
-        self._eureka_episode_sums["eureka_total_rewards"] += float(reward)
-        return obs, float(reward), terminated, truncated, info
+        return obs, reward, done, info
 
     def reset(self, **kwargs):
-        self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
-        obs, info = self.env.reset(**kwargs)
-        
-        metadata = self.env.unwrapped.controller.last_event.metadata
-        objects = metadata.get("objects", [])
-        
-        available_targets = list(set(
-            obj.get("objectType") for obj in objects 
-            if obj.get("pickupable") and obj.get("objectType") in AVAILABLE_OBJECT_TYPES
-        ))
-        
-        if available_targets:
-            chosen_target = random.choice(available_targets)
-            self.env.unwrapped.target_object_type = chosen_target
-        else:
-            self.env.unwrapped.target_object_type = AVAILABLE_OBJECT_TYPES
-            
-        obs = self._inject_goal_to_obs(obs)
+        self.env.reset(**kwargs)
+
+        target_type = self.target_object_type
+        self.set_target_object(target_type)
+
+        obs = self.build_observation(self.target_object)
+        info = {}
+
         return obs, info
 
 def clean_code(code):
@@ -183,7 +213,8 @@ class EurekaTaskManager:
         num_processes: int = 1,
         device: str = "cuda",
         max_training_iterations: int = 2048,
-        config_path: str = None
+        config_path: str = None,
+        category: str = None
     ):
         self._env = env
         self._num_processes = num_processes
@@ -197,6 +228,10 @@ class EurekaTaskManager:
                     config_override={"max_episode_steps": 500}
         )
         self.thor_env = EurekaThorWrapper(raw_env)
+        
+        target_object_type = self.set_random_target(category)
+        self.set_target_object(target_object_type)
+        self.thor_env.get_observation()
 
         self._rewards_queues = [multiprocessing.Queue() for _ in range(self._num_processes)]
         self._results_queue = multiprocessing.Queue()
@@ -208,6 +243,10 @@ class EurekaTaskManager:
             p.daemon = True 
             self._processes[idx] = p
             p.start()
+
+    def set_random_target(self, category):
+        available_target_list = self.get_available_target_list(category)
+        return available_target_list[random.randint(0, len(available_target_list)-1)]
 
     def train(self, reward_data_list):
         for idx, data in enumerate(reward_data_list):
@@ -229,7 +268,11 @@ class EurekaTaskManager:
                 proper_objects.append(obj['objectType'])
         
         return proper_objects
-
+    
+    def set_target_object(self, target_object_type):
+        self._target_object_type = target_object_type
+        self.thor_env.set_target_object(target_object_type)
+        
     def _worker(self, idx, queue):
         while not self.termination_event.is_set():
             data = queue.get()
