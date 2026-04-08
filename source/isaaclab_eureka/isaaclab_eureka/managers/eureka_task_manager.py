@@ -33,8 +33,6 @@ class EurekaThorWrapper(gym.Wrapper):
             self.action_space = env.action_space["action_index"]
         else:
             self.action_space = env.action_space
-            
-        orig_obs_space = self.env.observation_space
 
         self.observation_space = gym.spaces.Dict({
             "env_obs": gym.spaces.Box(0, 255, (300, 300, 3), dtype=np.uint8),
@@ -49,25 +47,8 @@ class EurekaThorWrapper(gym.Wrapper):
             "visible": gym.spaces.Discrete(2),
         })
 
-        # print(orig_obs_space)
-        
-        # if isinstance(orig_obs_space, gym.spaces.Dict):
-        #     new_spaces = dict(orig_obs_space.spaces)
-        #     new_spaces["goal_index"] = gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
-        #     self.observation_space = gym.spaces.Dict(new_spaces)
-        #     self._is_obs_dict = True
-        # else:
-        #     self.observation_space = gym.spaces.Dict({
-        #         "center_position": self.controller.last_event.metadata["objects"]["axisAlignedBoundingBox"]["center"],
-        #         "distance": self.controller.last_event.metadata["objects"]["distance"],
-        #         "target_object": {
-        #             "object_type": self.controller.last_event.metadata["objects"]["axisAlignedBoundingBox"]["center"]
-        #         }
-        #     })
-        #     self._is_obs_dict = False
-
-        self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
         self._get_rewards_eureka = None
+        self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
 
     @property
     def controller(self):
@@ -75,85 +56,86 @@ class EurekaThorWrapper(gym.Wrapper):
 
     @property
     def target_object_type(self):
-        return getattr(self.env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+        return getattr(self.env.unwrapped, "target_object_type", None)
 
-    def action(self, act):
-        return {"action_index": int(act)}
-    
-    def set_target_object(self, target_object_type):
-        for obs in self.controller.last_event.metadata['objects']:
-            if obs['objectType'] == target_object_type:
-                self.target_object = obs
-                break
-    
-    def build_observation(self, target=None):
-        obj_type = target["objectType"]
-        obj_id = OBJECT_TO_ID.get(obj_type, OBJECT_TO_ID["Unknown"])
+    # -------------------------
+    # 🔥 target 찾기 (핵심)
+    # -------------------------
+    def find_target_object(self):
+        target_type = self.target_object_type
+        if target_type is None:
+            return None
 
+        for obj in self.controller.last_event.metadata["objects"]:
+            if obj["objectType"] == target_type:
+                return obj
+
+        return None
+
+    # -------------------------
+    # 🔥 observation 생성
+    # -------------------------
+    def build_observation(self, target):
+        if target is None:
+            # fallback
+            return {
+                "env_obs": np.zeros((300,300,3), dtype=np.uint8),
+                "center_x": np.array([0.0], dtype=np.float32),
+                "center_y": np.array([0.0], dtype=np.float32),
+                "center_z": np.array([0.0], dtype=np.float32),
+                "distance": np.array([0.0], dtype=np.float32),
+                "object_type": np.int64(0),
+                "visible": np.int64(0),
+            }
+
+        obj_id = OBJECT_TO_ID.get(target["objectType"], 0)
         center = target["axisAlignedBoundingBox"]["center"]
-        distance = target["distance"]
-        visible = target["visible"]
 
         return {
-            "env_obs": self.env_obs if hasattr(self, "env_obs") else np.zeros((300,300,3), dtype=np.uint8),
+            "env_obs": np.zeros((300,300,3), dtype=np.uint8),
 
-            # 🔥 scalar → vector
             "center_x": np.array([center["x"]], dtype=np.float32),
             "center_y": np.array([center["y"]], dtype=np.float32),
             "center_z": np.array([center["z"]], dtype=np.float32),
 
-            "distance": np.array([distance], dtype=np.float32),
+            "distance": np.array([target["distance"]], dtype=np.float32),
 
-            # Discrete는 그대로 OK
             "object_type": np.int64(obj_id),
-            "visible": np.int64(visible),
+            "visible": np.int64(target["visible"]),
         }
 
-    def get_observation(self):
-        self.set_target_object(self.target_object['objectType'])
-
-        target = self.target_object
-        obs = self.build_observation(target)
-
-        # print(obs)
-        return obs
-    
-    def _inject_goal_to_obs(self, obs):
-        target_name = self.target_object_type
-
-        goal_idx = OBJECT_TO_ID.get(target_name, 0)
-        goal_array = np.int64(goal_idx)
-
-        # 반드시 dict 보장
-        if not isinstance(obs, dict):
-            raise ValueError("Observation must be dict for SB3 MultiInputPolicy")
-
-        obs = dict(obs)  # safety copy
-
-        obs["goal_index"] = goal_array
-
-        return obs
-
+    # -------------------------
+    # step
+    # -------------------------
     def step(self, action):
-        # 🔥 SB3 → env format 변환
         if not isinstance(action, dict):
             action = {"action_index": int(action)}
 
         obs, reward, terminated, truncated, info = self.env.step(action)
 
-        self.set_target_object(self.target_object_type)
-        obs = self.build_observation(self.target_object)
+        target = self.find_target_object()
+        obs = self.build_observation(target)
+
+        # 🔥 reward shaping 적용
+        if self._get_rewards_eureka is not None:
+            r, _ = self._get_rewards_eureka(self)
+            reward += r
+
+            self._eureka_episode_sums["eureka_total_rewards"] += r
 
         return obs, reward, terminated, truncated, info
 
+    # -------------------------
+    # reset
+    # -------------------------
     def reset(self, **kwargs):
-        self.env.reset(**kwargs)
+        _, info = self.env.reset(**kwargs)
 
-        target_type = self.target_object_type
-        self.set_target_object(target_type)
+        # 🔥 에피소드 reward 초기화
+        self._eureka_episode_sums["eureka_total_rewards"] = 0.0
 
-        obs = self.build_observation(self.target_object)
-        info = {}
+        target = self.find_target_object()
+        obs = self.build_observation(target)
 
         return obs, info
 
@@ -219,9 +201,13 @@ class EurekaTaskManager:
         )
         self.thor_env = EurekaThorWrapper(raw_env)
         
+        self.thor_env = EurekaThorWrapper(raw_env)
+
         target_object_type = self.set_random_target(category)
         self.set_target_object(target_object_type)
-        self.thor_env.get_observation()
+
+        # 🔥 반드시 reset 이후에 object 잡힘
+        self.thor_env.reset()
 
         self._rewards_queues = [multiprocessing.Queue() for _ in range(self._num_processes)]
         self._results_queue = multiprocessing.Queue()
@@ -261,7 +247,7 @@ class EurekaTaskManager:
     
     def set_target_object(self, target_object_type):
         self._target_object_type = target_object_type
-        self.thor_env.set_target_object(target_object_type)
+        self.thor_env.unwrapped.target_object_type = target_object_type
         
     def _worker(self, idx, queue):
         while not self.termination_event.is_set():
@@ -291,11 +277,11 @@ class EurekaTaskManager:
                 for _ in range(MAX_RESET_TRY):
                     obs, _ = self.thor_env.reset()
                     metadata = self.thor_env.unwrapped.controller.last_event.metadata
-                    current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+                    current_target = getattr(self.thor_env.unwrapped, "target_object_type", None)
                     
                     try:
                         # 🔥 수정됨: precondition 평가 시에도 TARGET_TYPE 주입
-                        if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                        if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": self.thor_env}):
                             found = True
                             break
                     except Exception as e:
@@ -312,6 +298,8 @@ class EurekaTaskManager:
 
                 success_count = 0
                 episodes = 10
+
+                episode_rewards = []
 
                 for _ in range(episodes):
                     for _ in range(MAX_RESET_TRY):
@@ -336,18 +324,22 @@ class EurekaTaskManager:
                         current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
 
                         try:
-                            if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                            if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": self.thor_env}):
                                 success_count += 1
                                 break
                         except Exception as e:
                             print(f"⚠️ success eval error: {e}")
                             break
+                    episode_rewards.append(
+                        self.thor_env._eureka_episode_sums["eureka_total_rewards"]
+                    )
 
                 success_rate = success_count / episodes
+                reward_mean = np.mean(episode_rewards)
 
                 result = {
                     "success": True,
-                    "reward_mean": self.thor_env._eureka_episode_sums["eureka_total_rewards"],
+                    "reward_mean": reward_mean,
                     "success_rate": success_rate,
                     "model_state_dict": model_state_dict
                 }

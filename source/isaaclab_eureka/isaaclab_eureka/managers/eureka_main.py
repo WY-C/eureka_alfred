@@ -35,6 +35,16 @@ RULES:
 - Second value MUST be dict
 - If you violate this → code will crash
 
+TARGET OBJECT:
+
+- The target object type is available as:
+    env.target_object_type
+
+- Example:
+    if obj["objectType"] == env.target_object_type:
+
+NEVER hardcode object names.
+
 ENV & GENERALIZATION:
 - The target object changes every episode.
 - Use `env.target_object_type` to get the target object's name as a string. NEVER hardcode object names like "Mug" or "Apple".
@@ -255,19 +265,6 @@ def parse_subtasks(text):
 
     return subtasks
 
-# -------------------------------
-# ✅ success eval 함수
-# -------------------------------
-def check_success(env, code):
-    metadata = env.unwrapped.controller.last_event.metadata
-
-    try:
-        return eval(code, {"metadata": metadata})
-    except Exception as e:
-        print(f"⚠️ Success eval error: {e}")
-        return False
-
-
 def run_train_loop():
     llm = LLMManager(
         gpt_model=GPT_MODEL,
@@ -275,6 +272,8 @@ def run_train_loop():
         temperature=TEMPERATURE,
         system_prompt=SYSTEM_PROMPT
     )
+
+    policy_manager = PolicyManager()
 
     os.makedirs("outputs/reward_shaping_logs", exist_ok=True)
 
@@ -295,10 +294,19 @@ def run_train_loop():
 
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
 
+        log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}.txt"
+
         # 🔥 LLM으로 policy label 생성
         subtask_info = generate_policy_label_and_category(llm, subtask) # {'label': ..., 'category': ...}
         print(f"🏷 Subtask Label(generalized): {subtask_info['label']}")
         print(f"🏷 Subtask Category: {subtask_info['category']}")
+
+        # 파일 초기화
+        with open(log_path, "w") as f:
+            f.write(f"Subtask: {subtask}\n")
+            f.write(f"Subtask label: {subtask_info['label']}\n")
+            f.write(f"Category: {subtask_info['category']}\n")
+            f.write("="*50 + "\n\n")
 
         task_manager = EurekaTaskManager(
             num_processes=NUM_SUGGESTIONS,
@@ -348,6 +356,13 @@ If you fail, the code will crash.
             response = llm.prompt(reward_prompt)
             reward_strings = response["reward_strings"]
 
+            reward_code = reward_strings[0]
+
+            # 🔥 로그 저장
+            with open(log_path, "a") as f:
+                f.write(f"[Iter {i+1}]\n")
+                f.write(reward_code + "\n\n")
+
             reward_data = [{
                 "reward_code": reward_strings[0],
                 "success_code": success_code,
@@ -362,6 +377,8 @@ If you fail, the code will crash.
                 continue
 
             score = result["reward_mean"]
+            with open(log_path, "a") as f:
+                f.write(f"Score: {score}, SuccessRate: {result['success_rate']}\n\n")  
 
             if score < 1:
                 last_feedback += "Reward rarely triggers. Add more dense intermediate rewards."
@@ -376,8 +393,13 @@ If you fail, the code will crash.
                 best_score = score
                 best_reward_code = reward_strings[0]
                 best_model = best_state_dict  # 베스트 모델 갱신
-                policy_manager.save_policy(best_state_dict, policy_label)
+                policy_manager.save_policy(best_state_dict, subtask_info['label'])
                 print(f'Policy updated(score: {score})')
+
+                 # 🔥 best reward 기록
+                with open(log_path, "a") as f:
+                    f.write(f"🔥 BEST (score={score})\n")
+                    f.write(reward_code + "\n\n")
 
             last_feedback = f"Score: {score}"
             print(last_feedback)
@@ -386,7 +408,7 @@ If you fail, the code will crash.
         # ✅ policy 저장
         # -------------------------------
         if best_model is not None:
-            policy_manager.save_policy(best_model, policy_label)
+            policy_manager.save_policy(best_model, subtask_info['label'])
 
         print(f"✅ Best Score: {best_score:.4f}")
 
