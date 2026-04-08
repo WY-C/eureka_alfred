@@ -37,24 +37,16 @@ class EurekaThorWrapper(gym.Wrapper):
         orig_obs_space = self.env.observation_space
 
         self.observation_space = gym.spaces.Dict({
-            # optional: RGB 있으면 유지
-            "env_obs": gym.spaces.Box(
-                low=0, high=255,
-                shape=(300, 300, 3),
-                dtype=np.uint8
-            ),
+            "env_obs": gym.spaces.Box(0, 255, (300, 300, 3), dtype=np.uint8),
 
-            # flattened position
-            "center_x": gym.spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
-            "center_y": gym.spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
-            "center_z": gym.spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
+            "center_x": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            "center_y": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            "center_z": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
 
-            "distance": gym.spaces.Box(0.0, np.inf, shape=(), dtype=np.float32),
+            "distance": gym.spaces.Box(0.0, np.inf, shape=(1,), dtype=np.float32),
 
             "object_type": gym.spaces.Discrete(len(OBJECT_TO_ID)),
             "visible": gym.spaces.Discrete(2),
-
-            "goal_index": gym.spaces.Discrete(len(AVAILABLE_OBJECT_TYPES))
         })
 
         # print(orig_obs_space)
@@ -99,22 +91,22 @@ class EurekaThorWrapper(gym.Wrapper):
         obj_id = OBJECT_TO_ID.get(obj_type, OBJECT_TO_ID["Unknown"])
 
         center = target["axisAlignedBoundingBox"]["center"]
-
         distance = target["distance"]
         visible = target["visible"]
 
         return {
             "env_obs": self.env_obs if hasattr(self, "env_obs") else np.zeros((300,300,3), dtype=np.uint8),
 
-            "center_x": np.float32(center["x"]),
-            "center_y": np.float32(center["y"]),
-            "center_z": np.float32(center["z"]),
+            # 🔥 scalar → vector
+            "center_x": np.array([center["x"]], dtype=np.float32),
+            "center_y": np.array([center["y"]], dtype=np.float32),
+            "center_z": np.array([center["z"]], dtype=np.float32),
 
-            "distance": np.float32(distance),
+            "distance": np.array([distance], dtype=np.float32),
 
+            # Discrete는 그대로 OK
             "object_type": np.int64(obj_id),
             "visible": np.int64(visible),
-            "goal_index": np.int64(OBJECT_TO_ID.get(self.target_object['objectType']))
         }
 
     def get_observation(self):
@@ -143,18 +135,16 @@ class EurekaThorWrapper(gym.Wrapper):
         return obs
 
     def step(self, action):
-        self.env.step(action)
+        # 🔥 SB3 → env format 변환
+        if not isinstance(action, dict):
+            action = {"action_index": int(action)}
 
-        self.set_target_object(self.target_object['objectType'])
-        target = self.target_object
+        obs, reward, terminated, truncated, info = self.env.step(action)
 
-        obs = self.build_observation(target)
+        self.set_target_object(self.target_object_type)
+        obs = self.build_observation(self.target_object)
 
-        reward = self.compute_reward()
-        done = self.is_done()
-        info = {}
-
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
     def reset(self, **kwargs):
         self.env.reset(**kwargs)
