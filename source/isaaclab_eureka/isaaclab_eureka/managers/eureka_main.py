@@ -385,6 +385,7 @@ def run_train_loop():
             f.write(f"Subtask: {subtask}\n")
             f.write(f"Subtask label: {subtask_info['label']}\n")
             f.write(f"Category: {subtask_info['category']}\n")
+            f.write(f"Success code: {success_code}\n")
             f.write("="*50 + "\n\n")
 
         task_manager = EurekaTaskManager(

@@ -168,10 +168,10 @@ class EurekaThorWrapper(gym.Wrapper):
 
         self.last_obs = obs
 
-        print("\n[STEP OBS]")
-        for k, v in obs.items():
-            if k != "env_obs":
-                print(f"{k}: {v} shape={getattr(v, 'shape', None)}")
+        # print("\n[STEP OBS]")
+        # for k, v in obs.items():
+        #     if k != "env_obs":
+        #         print(f"{k}: {v} shape={getattr(v, 'shape', None)}")
 
         # 🔥 reward shaping
         if self._get_rewards_eureka is not None:
@@ -381,6 +381,7 @@ class EurekaTaskManager:
                     done = False
                     while not done:
                         action, _ = model.predict(obs)
+                        print(f'action: {action}')
                         obs, _, terminated, truncated, _ = self.thor_env.step(action)
                         done = terminated or truncated
 
@@ -390,6 +391,7 @@ class EurekaTaskManager:
                         try:
                             if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": self.thor_env}):
                                 success_count += 1
+                                print(f'success count increased: {success_count}')
                                 break
                         except Exception as e:
                             print(f"⚠️ success eval error: {e}")
@@ -398,6 +400,8 @@ class EurekaTaskManager:
                         self.thor_env._eureka_episode_sums["eureka_total_rewards"]
                     )
 
+                print(f'final success count: {success_count}')
+                print(f'final episode: {episodes}')
                 success_rate = success_count / episodes
                 reward_mean = np.mean(episode_rewards)
 
