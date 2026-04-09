@@ -101,6 +101,43 @@ if env.last_obs["visible"]:
     total_reward += 0.5
 
 total_reward += -env.last_obs["distance"][0]
+
+Example Reward Function:
+
+def _get_rewards_eureka(env):
+    total_reward = 0
+    rewards_dict = {}
+
+    current_distance = env.last_obs["distance"][0]
+
+    if not hasattr(env, "prev_distance"):
+        env.prev_distance = current_distance
+
+    # progress reward
+    progress = env.prev_distance - current_distance
+    total_reward += progress * 10.0
+
+    env.prev_distance = current_distance
+
+    # visibility reward
+    if env.last_obs["visible"][0]:
+        total_reward += 1.0
+
+    # proximity reward
+    if current_distance < 1.0:
+        total_reward += 2.0
+
+    if current_distance < 0.5:
+        total_reward += 5.0
+
+    # success reward
+    metadata = env.controller.last_event.metadata
+    TARGET_TYPE = env.target_object_type
+
+    if any(obj["objectType"] == TARGET_TYPE for obj in metadata["inventoryObjects"]):
+        total_reward += 100.0
+
+    return total_reward, rewards_dict
 """
 
 # -------------------------------
@@ -361,7 +398,6 @@ def run_train_loop():
 
         best_score = -float("inf")
         best_reward_code = None
-        best_model = None
 
         last_feedback = f"Focus ONLY on subtask: {subtask}"
 
@@ -455,29 +491,41 @@ If you fail, the code will crash.
             print(f"Score: {score}, SuccessRate: {success_rate}")
 
             # 🔥 여기 핵심: model 가져오기
-            best_state_dict = result["model_state_dict"]
+            # best_state_dict = result["model_state_dict"]
             if score > best_score:
                 best_score = score
                 best_reward_code = reward_strings[0]
-                best_model = best_state_dict  # 베스트 모델 갱신
-                policy_manager.save_policy(best_state_dict, subtask_info['label'])
-                print(f'Policy updated(score: {score})')
 
-                 # 🔥 best reward 기록
-                with open(log_path, "a") as f:
-                    f.write(f"🔥 BEST (score={score})\n")
-                    f.write(reward_code + "\n\n")
+            last_feedback += f"\nLast Score: {score}, Last Success Rate: {success_rate}\nLast Reward Function Code: \n{reward_code}"
+            # print(last_feedback)
 
-            last_feedback = f"Score: {score}"
-            print(last_feedback)
-
-        # -------------------------------
-        # ✅ policy 저장
-        # -------------------------------
-        if best_model is not None:
-            policy_manager.save_policy(best_model, subtask_info['label'])
+         # 🔥 best reward 기록
+        with open(log_path, "a") as f:
+            f.write(f"🔥 BEST (score={score})\n")
+            f.write(reward_code + "\n\n")
 
         print(f"✅ Best Score: {best_score:.4f}")
+        print("\n🔥 Final training with BEST reward function...")
+
+        final_reward_data = [{
+            "reward_code": best_reward_code,
+            "success_code": success_code,
+            "precondition_code": s["pre"]
+        }]
+
+        # 🔥 더 길게 학습 (중요)
+        task_manager._max_training_iterations = TRAINING_STEPS * 3
+
+        final_results = task_manager.train(final_reward_data)
+        final_result = final_results[0]
+
+        if final_result["success"]:
+            final_model = final_result["model_state_dict"]
+            policy_manager.save_policy(final_model, subtask_info['label'])
+
+            print(f"✅ Final model saved (score={final_result['reward_mean']}, success={final_result['success_rate']})")
+        else:
+            print("❌ Final training failed:", final_result["exception"])
 
     task_manager.close()
 

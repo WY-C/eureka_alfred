@@ -22,6 +22,25 @@ AVAILABLE_OBJECT_TYPES = ["Unknown", "Apple", "Bowl", "Bread", "ButterKnife", "C
 
 OBJECT_TO_ID = {obj: i for i, obj in enumerate(AVAILABLE_OBJECT_TYPES)}
 
+def normalize_obs(obs):
+    for k, v in obs.items():
+        if k == "env_obs":
+            continue
+
+        # scalar → (1,)
+        if np.isscalar(v):
+            obs[k] = np.array([v], dtype=np.float32)
+
+        # () → (1,)
+        elif isinstance(v, np.ndarray) and v.shape == ():
+            obs[k] = v.reshape(1).astype(np.float32)
+
+        # dtype 통일
+        elif isinstance(v, np.ndarray):
+            obs[k] = v.astype(np.float32)
+
+    return obs
+
 # -------------------------
 # Wrapper
 # -------------------------
@@ -43,8 +62,8 @@ class EurekaThorWrapper(gym.Wrapper):
 
             "distance": gym.spaces.Box(0.0, np.inf, shape=(1,), dtype=np.float32),
 
-            "object_type": gym.spaces.Discrete(len(OBJECT_TO_ID)),
-            "visible": gym.spaces.Discrete(2),
+            "object_type": gym.spaces.Box(0, len(OBJECT_TO_ID), shape=(1,), dtype=np.int64),
+            "visible": gym.spaces.Box(0, 1, shape=(1,), dtype=np.int64),
         })
 
         self._get_rewards_eureka = None
@@ -107,8 +126,8 @@ class EurekaThorWrapper(gym.Wrapper):
                 "center_y": np.array([0.0], dtype=np.float32),
                 "center_z": np.array([0.0], dtype=np.float32),
                 "distance": np.array([0.0], dtype=np.float32),
-                "object_type": np.int64(0),
-                "visible": np.int64(0),
+                "object_type": np.array([0], dtype=np.float32),
+                "visible": np.array([0], dtype=np.float32),
             }
             self.last_obs = obs
             return obs
@@ -126,7 +145,7 @@ class EurekaThorWrapper(gym.Wrapper):
             "distance": np.array([target["distance"]], dtype=np.float32),
 
             "object_type": np.int64(obj_id),
-            "visible": np.int64(target["visible"]),
+            "visible": np.array([target["visible"]], dtype=np.int64),
         }
 
         # 🔥 핵심: 저장
@@ -145,15 +164,24 @@ class EurekaThorWrapper(gym.Wrapper):
 
         target = self.find_target_object()
         obs = self.build_observation(target)
+        obs = normalize_obs(obs)
 
-        self.last_obs = obs  # 🔥 핵심
+        self.last_obs = obs
 
-        # reward shaping
+        print("\n[STEP OBS]")
+        for k, v in obs.items():
+            if k != "env_obs":
+                print(f"{k}: {v} shape={getattr(v, 'shape', None)}")
+
+        # 🔥 reward shaping
         if self._get_rewards_eureka is not None:
             r, _ = self._get_rewards_eureka(self)
             reward += r
-
             self._eureka_episode_sums["eureka_total_rewards"] += r
+
+        # 🔥🔥🔥 핵심 추가
+        if terminated or truncated:
+            info["terminal_observation"] = normalize_obs(obs)
 
         return obs, reward, terminated, truncated, info
 
@@ -168,6 +196,7 @@ class EurekaThorWrapper(gym.Wrapper):
 
         target = self.find_target_object()
         obs = self.build_observation(target)
+        obs = normalize_obs(obs)
 
         return obs, info
 
@@ -327,7 +356,7 @@ class EurekaTaskManager:
                 if not found:
                     print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
 
-                model = PPO("MultiInputPolicy", self.thor_env, verbose=0, device=self._device)
+                model = PPO("MultiInputPolicy", self.thor_env, ent_coef=0.01, verbose=0, device=self._device)
                 model.learn(total_timesteps=self._max_training_iterations)
                 model_state_dict = model.policy.state_dict()
 

@@ -8,206 +8,151 @@ def _get_rewards_eureka(env):
     total_reward = 0
     rewards_dict = {}
 
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
+    current_distance = env.last_obs["distance"][0]
 
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
+    if not hasattr(env, "prev_distance"):
+        env.prev_distance = current_distance
 
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
+    # progress reward
+    progress = env.prev_distance - current_distance
+    total_reward += progress * 10.0
+
+    env.prev_distance = current_distance
+
+    # visibility reward
+    if env.last_obs["visible"][0]:
         total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
+
+    # proximity reward
+    if current_distance < 1.0:
+        total_reward += 2.0
+
+    if current_distance < 0.5:
+        total_reward += 5.0
+
+    # success reward
+    metadata = env.controller.last_event.metadata
+    TARGET_TYPE = env.target_object_type
+
+    if any(obj["objectType"] == TARGET_TYPE for obj in metadata["inventoryObjects"]):
+        total_reward += 100.0
+
+    # additional reward for picking up the object
+    if any(obj["objectType"] == TARGET_TYPE and obj["isPickedUp"] for obj in metadata["objects"]):
+        total_reward += 50.0
 
     return total_reward, rewards_dict
 
 
-Score: -107.572509765625, SuccessRate: 0.0
-
-🔥 BEST (score=-107.572509765625)
-def _get_rewards_eureka(env):
-    total_reward = 0
-    rewards_dict = {}
-
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
-
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
-
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
-        total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
-
-    return total_reward, rewards_dict
-
+Score: 62.48213577270508, SuccessRate: 0.1
 
 [Iter 2]
 def _get_rewards_eureka(env):
     total_reward = 0
     rewards_dict = {}
 
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
+    current_distance = env.last_obs["distance"][0]
 
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
+    if not hasattr(env, "prev_distance"):
+        env.prev_distance = current_distance
 
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
+    # progress reward
+    progress = env.prev_distance - current_distance
+    total_reward += progress * 10.0
+
+    env.prev_distance = current_distance
+
+    # visibility reward
+    if env.last_obs["visible"][0]:
         total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
 
-    # Add a reward for getting closer to the target object
-    if env.last_obs["distance"][0] < 1.0:
-        total_reward += 0.2
-        rewards_dict["close_to_target"] = 0.2
+    # proximity reward
+    if current_distance < 1.0:
+        total_reward += 2.0
 
-    # Penalize if the target object is not in the center of the view
-    if abs(env.last_obs["center_x"][0]) > 0.1 or abs(env.last_obs["center_y"][0]) > 0.1:
-        total_reward -= 0.1
-        rewards_dict["off_center_penalty"] = -0.1
+    if current_distance < 0.5:
+        total_reward += 5.0
+
+    # intermediate milestone rewards
+    if current_distance < 0.3:
+        total_reward += 10.0
+
+    if current_distance < 0.1:
+        total_reward += 20.0
+
+    # success reward
+    metadata = env.controller.last_event.metadata
+    TARGET_TYPE = env.target_object_type
+
+    if any(obj["objectType"] == TARGET_TYPE for obj in metadata["inventoryObjects"]):
+        total_reward += 100.0
+
+    # additional reward for picking up the object
+    if any(obj["objectType"] == TARGET_TYPE and obj["isPickedUp"] for obj in metadata["objects"]):
+        total_reward += 50.0
+
+    # additional reward for aligning with the target
+    if env.last_obs["center_x"][0] < 0.1 and env.last_obs["center_y"][0] < 0.1 and env.last_obs["center_z"][0] < 0.1:
+        total_reward += 15.0
 
     return total_reward, rewards_dict
 
 
-Score: -78.76654052734375, SuccessRate: 0.1
-
-🔥 BEST (score=-78.76654052734375)
-def _get_rewards_eureka(env):
-    total_reward = 0
-    rewards_dict = {}
-
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
-
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
-
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
-        total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
-
-    # Add a reward for getting closer to the target object
-    if env.last_obs["distance"][0] < 1.0:
-        total_reward += 0.2
-        rewards_dict["close_to_target"] = 0.2
-
-    # Penalize if the target object is not in the center of the view
-    if abs(env.last_obs["center_x"][0]) > 0.1 or abs(env.last_obs["center_y"][0]) > 0.1:
-        total_reward -= 0.1
-        rewards_dict["off_center_penalty"] = -0.1
-
-    return total_reward, rewards_dict
-
+Score: 497.15399169921875, SuccessRate: 0.0
 
 [Iter 3]
 def _get_rewards_eureka(env):
     total_reward = 0
     rewards_dict = {}
 
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
+    current_distance = env.last_obs["distance"][0]
 
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
+    if not hasattr(env, "prev_distance"):
+        env.prev_distance = current_distance
 
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
+    # progress reward
+    progress = env.prev_distance - current_distance
+    total_reward += progress * 10.0
+
+    env.prev_distance = current_distance
+
+    # visibility reward
+    if env.last_obs["visible"][0]:
         total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
 
-    # Add a reward for being within a certain distance threshold
-    if env.last_obs["distance"][0] < 0.5:
-        total_reward += 0.3
-        rewards_dict["very_close_to_target"] = 0.3
+    # proximity reward
+    if current_distance < 1.0:
+        total_reward += 2.0
+    if current_distance < 0.5:
+        total_reward += 5.0
+    if current_distance < 0.3:
+        total_reward += 10.0
+    if current_distance < 0.1:
+        total_reward += 20.0
 
-    # Penalize for being too far away from the target
-    if env.last_obs["distance"][0] > 2.0:
-        total_reward -= 0.5
-        rewards_dict["far_from_target_penalty"] = -0.5
+    # alignment reward
+    if env.last_obs["center_x"][0] < 0.2 and env.last_obs["center_y"][0] < 0.2 and env.last_obs["center_z"][0] < 0.2:
+        total_reward += 10.0
+    if env.last_obs["center_x"][0] < 0.1 and env.last_obs["center_y"][0] < 0.1 and env.last_obs["center_z"][0] < 0.1:
+        total_reward += 20.0
 
-    # Add a reward for having the target object in the center of the view
-    if abs(env.last_obs["center_x"][0]) < 0.1 and abs(env.last_obs["center_y"][0]) < 0.1:
-        total_reward += 0.2
-        rewards_dict["centered_target_bonus"] = 0.2
+    # success reward
+    metadata = env.controller.last_event.metadata
+    TARGET_TYPE = env.target_object_type
+
+    if any(obj["objectType"] == TARGET_TYPE for obj in metadata["inventoryObjects"]):
+        total_reward += 100.0
+
+    # additional reward for picking up the object
+    if any(obj["objectType"] == TARGET_TYPE and obj["isPickedUp"] for obj in metadata["objects"]):
+        total_reward += 50.0
+
+    # additional reward for maintaining visibility while approaching
+    if env.last_obs["visible"][0] and current_distance < 0.5:
+        total_reward += 5.0
 
     return total_reward, rewards_dict
 
 
-Score: -188.3333740234375, SuccessRate: 0.0
-
-[Iter 4]
-def _get_rewards_eureka(env):
-    total_reward = 0
-    rewards_dict = {}
-
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
-
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
-
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
-        total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
-
-    # Add a reward for getting very close to the target object
-    if env.last_obs["distance"][0] < 0.5:
-        total_reward += 0.3
-        rewards_dict["very_close_to_target"] = 0.3
-
-    # Penalize if the target object is far from the center of the view
-    if abs(env.last_obs["center_x"][0]) > 0.2 or abs(env.last_obs["center_y"][0]) > 0.2:
-        total_reward -= 0.2
-        rewards_dict["off_center_penalty"] = -0.2
-
-    # Add a reward for maintaining the target object in the center of the view
-    if abs(env.last_obs["center_x"][0]) < 0.1 and abs(env.last_obs["center_y"][0]) < 0.1:
-        total_reward += 0.2
-        rewards_dict["centered_bonus"] = 0.2
-
-    return total_reward, rewards_dict
-
-
-Score: -159.80870056152344, SuccessRate: 0.0
-
-[Iter 5]
-def _get_rewards_eureka(env):
-    total_reward = 0
-    rewards_dict = {}
-
-    if env.last_obs["visible"]:
-        total_reward += 0.5
-        rewards_dict["visibility_bonus"] = 0.5
-
-    total_reward += -env.last_obs["distance"][0] * 0.1
-    rewards_dict["distance_penalty"] = -env.last_obs["distance"][0] * 0.1
-
-    if any(obj["objectType"] == env.target_object_type for obj in env.get_interacted_objects()["inventory"]):
-        total_reward += 1.0
-        rewards_dict["pickup_success"] = 1.0
-
-    # Add a reward for maintaining the target object in the center of the view
-    if abs(env.last_obs["center_x"][0]) < 0.1 and abs(env.last_obs["center_y"][0]) < 0.1:
-        total_reward += 0.1
-        rewards_dict["centered_bonus"] = 0.1
-
-    # Penalize if the agent moves away from the target object
-    if env.last_obs["distance"][0] > 2.0:
-        total_reward -= 0.2
-        rewards_dict["far_from_target_penalty"] = -0.2
-
-    # Add a reward for reducing the distance to the target object
-    if env.last_obs["distance"][0] < 1.0:
-        total_reward += 0.2
-        rewards_dict["close_to_target"] = 0.2
-
-    return total_reward, rewards_dict
-
-
-Score: -144.58123779296875, SuccessRate: 0.1
+Score: 1369.2896728515625, SuccessRate: 0.0
 
