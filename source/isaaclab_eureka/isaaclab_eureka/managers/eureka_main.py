@@ -8,136 +8,27 @@ from eureka_task_manager import EurekaTaskManager
 from policy_manager import PolicyManager
 
 # --- Config ---
-GPT_MODEL = "Qwen/Qwen2.5-72B-Instruct-AWQ"
+GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1  
 TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
-TRAINING_STEPS = 10000 
+TRAINING_STEPS = 1000000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
 SYSTEM_PROMPT = """
-You are a world-class reward engineer.
-
-CRITICAL OUTPUT FORMAT:
-
-You MUST return EXACTLY:
-
+You are a reward engineer trying to write reward functions to solve reinforcement learning
+tasks as effective as possible.
+Your goal is to write a reward function for the environment that will help the agent learn the
+task described in text.
+Your reward function should use useful variables from the environment as inputs. As an example,
+the reward function signature can be:
 def _get_rewards_eureka(env):
     total_reward = 0
     rewards_dict = {}
-
     ...
-
     return total_reward, rewards_dict
 
-RULES:
-- NEVER return a single value
-- ALWAYS return TWO values
-- Second value MUST be dict
-- If you violate this → code will crash
-
-IMPORTANT:
-
-- The target object type is available as:
-    TARGET_TYPE
-
-- DO NOT use:
-    targetObjectType
-    obj["targetObjectType"]
-
-- Always compare using:
-    obj["objectType"] == TARGET_TYPE
-
-NEVER hardcode object names.
-
-    
-- All observation values are 1D arrays of size 1
-- ALWAYS use index [0]
-
-Correct:
-    env.last_obs["distance"][0]
-    env.last_obs["center_x"][0]
-
-WRONG:
-    env.last_obs["distance"][1]
-    env.last_obs["center_x"][1]
-
-ENV & GENERALIZATION:
-- The target object changes every episode.
-- Use `env.target_object_type` to get the target object's name as a string. NEVER hardcode object names like "Mug" or "Apple".
-- Use `env.controller.last_event.metadata` for full state.
-- Use `interacted = env.get_interacted_objects()` to easily get lists of objects currently in 'inventory', 'opened', 'toggled', or 'broken'.
-  Example: `any(obj["objectType"] == env.target_object_type for obj in interacted["inventory"])`
-
-CRITICAL:
-
-You MUST define EXACTLY this function:
-
-def _get_rewards_eureka(env):
-
-If you fail, the code will crash.
-
-IMPORTANT (VERY IMPORTANT):
-
-The agent ONLY sees the observation.
-
-You MUST design reward using:
-
-env.last_obs
-
-Available fields:
-
-- env.last_obs["distance"] → distance to target
-- env.last_obs["visible"] → 0 or 1
-- env.last_obs["center_x"], ["center_y"], ["center_z"]
-
-DO NOT rely only on metadata.
-Use observation-based reward shaping.
-
-Example:
-
-if env.last_obs["visible"]:
-    total_reward += 0.5
-
-total_reward += -env.last_obs["distance"][0]
-
-Example Reward Function:
-
-def _get_rewards_eureka(env):
-    total_reward = 0
-    rewards_dict = {}
-
-    current_distance = env.last_obs["distance"][0]
-
-    if not hasattr(env, "prev_distance"):
-        env.prev_distance = current_distance
-
-    # progress reward
-    progress = env.prev_distance - current_distance
-    total_reward += progress * 10.0
-
-    env.prev_distance = current_distance
-
-    # visibility reward
-    if env.last_obs["visible"][0]:
-        total_reward += 1.0
-
-    # proximity reward
-    if current_distance < 1.0:
-        total_reward += 2.0
-
-    if current_distance < 0.5:
-        total_reward += 5.0
-
-    # success reward
-    metadata = env.controller.last_event.metadata
-    TARGET_TYPE = env.target_object_type
-
-    if any(obj["objectType"] == TARGET_TYPE for obj in metadata["inventoryObjects"]):
-        total_reward += 100.0
-
-    return total_reward, rewards_dict
 """
 
 # -------------------------------
@@ -430,6 +321,16 @@ You MUST define EXACTLY this function:
 def _get_rewards_eureka(env):
 
 If you fail, the code will crash.
+
+Please carefully analyze the policy feedback and provide a new, improved reward function that
+can better solve the task. Some helpful tips for analyzing the policy feedback:
+    (1) If the success rates are always near zero, then you must rewrite the entire reward function
+    (2) If the values for a certain reward component are near identical throughout, then this means RL is not able to optimize this component as it is written. You may consider
+        (a) Changing its scale or the value of its temperature parameter
+        (b) Re-writing the reward component
+        (c) Discarding the reward component
+    (3) If some reward components’ magnitude is significantly larger, then you must re-scale its value to a proper range
+Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
 
             response = llm.prompt(reward_prompt)

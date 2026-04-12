@@ -1,43 +1,103 @@
-Subtask: Pick up Mug
-Subtask label: pick_up_object
-Category: pickupable
-Success code: any(obj["objectType"]==TARGET_TYPE for obj in metadata["inventoryObjects"])
+Subtask: Pick up mug
+Subtask label: place_object_on_receptacle,
+Category: receptacle
+Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
 ==================================================
 
 [Iter 1]
 def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
     total_reward = 0
     rewards_dict = {}
 
-    current_distance = env.last_obs["distance"][0]
-
-    if not hasattr(env, "prev_distance"):
-        env.prev_distance = current_distance
-
-    # progress reward
-    progress = env.prev_distance - current_distance
-    total_reward += progress * 5.0
-
-    env.prev_distance = current_distance
-
-    # visibility reward
-    if env.last_obs["visible"][0]:
-        total_reward += 1.0
-
-    # proximity reward
-    if current_distance < 1.0:
-        total_reward += 2.0
-
-    if current_distance < 0.5:
-        total_reward += 3.0
-
-    # success reward
-    metadata = env.controller.last_event.metadata
-    TARGET_TYPE = env.target_object_type
-
-    if any(obj["objectType"] == TARGET_TYPE for obj in metadata["inventoryObjects"]):
-        total_reward += 100.0
+    # Define reward for picking up an object
+    picked_up_object = any(obj["objectType"] != "" and obj["isPickedUp"] for obj in metadata["objects"])
+    
+    if picked_up_object:
+        total_reward += 10  # High reward for picking up any object
+        rewards_dict["picked_up_object"] = 10
+    else:
+        rewards_dict["picked_up_object"] = 0
 
     return total_reward, rewards_dict
+
+
+Score: 4052.0, SuccessRate: 0.0
+
+[Iter 2]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    total_reward = 0
+    rewards_dict = {}
+
+    # Check if the mug is visible
+    mug_visible = any(obj["objectType"].lower() == "mug" and obj["visible"] for obj in metadata["objects"])
+    if mug_visible:
+        total_reward += 1  # Small reward for seeing the mug
+        rewards_dict["mug_visible"] = 1
+    else:
+        rewards_dict["mug_visible"] = 0
+
+    # Check the distance to the nearest mug
+    mug_distances = [obj["distance"] for obj in metadata["objects"] if obj["objectType"].lower() == "mug"]
+    if mug_distances:
+        closest_mug_distance = min(mug_distances)
+        distance_reward = max(0, 2 - closest_mug_distance)  # Reward closer proximity to the mug
+        total_reward += distance_reward
+        rewards_dict["closest_mug_distance"] = distance_reward
+    else:
+        rewards_dict["closest_mug_distance"] = 0
+
+    # Check if the agent is interacting with a mug
+    interacted_with_mug = any(obj["objectType"].lower() == "mug" and obj["isPickedUp"] for obj in metadata["objects"])
+    if interacted_with_mug:
+        total_reward += 5  # Medium reward for interacting with the mug
+        rewards_dict["interacted_with_mug"] = 5
+    else:
+        rewards_dict["interacted_with_mug"] = 0
+
+    return total_reward, rewards_dict
+
+
+Score: 159.8340482532978, SuccessRate: 0.0
+
+[Iter 3]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    total_reward = 0
+    rewards_dict = {}
+
+    # Check if the mug is visible
+    mug_visible = any(obj["objectType"].lower() == "mug" and obj["visible"] for obj in metadata["objects"])
+    if mug_visible:
+        total_reward += 5  # Increased reward for seeing the mug
+        rewards_dict["mug_visible"] = 5
+    else:
+        rewards_dict["mug_visible"] = 0
+
+    # Check the distance to the nearest mug
+    mug_distances = [obj["distance"] for obj in metadata["objects"] if obj["objectType"].lower() == "mug"]
+    if mug_distances:
+        closest_mug_distance = min(mug_distances)
+        distance_reward = max(0, 5 - 5 * closest_mug_distance)  # More dense rewards for closeness
+        total_reward += distance_reward
+        rewards_dict["closest_mug_distance"] = distance_reward
+    else:
+        rewards_dict["closest_mug_distance"] = 0
+
+    # Check if the agent is interacting with a mug
+    interacted_with_mug = any(obj["objectType"].lower() == "mug" and obj["isPickedUp"] for obj in metadata["objects"])
+    if interacted_with_mug:
+        total_reward += 10  # Increased reward for interacting with the mug
+        rewards_dict["interacted_with_mug"] = 10
+    else:
+        rewards_dict["interacted_with_mug"] = 0
+
+    return total_reward, rewards_dict
+
+
+Score: 119.34911459684372, SuccessRate: 0.0
+
+[Iter 4]
 
 

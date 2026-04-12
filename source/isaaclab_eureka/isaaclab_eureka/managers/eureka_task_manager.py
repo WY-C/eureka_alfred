@@ -268,6 +268,7 @@ class EurekaTaskManager:
         self.thor_env = EurekaThorWrapper(raw_env)
         
         target_object_type = self.set_random_target(category)
+        target_object_type = 'Mug'
         self.set_target_object(target_object_type)
 
         # 🔥 반드시 reset 이후에 object 잡힘
