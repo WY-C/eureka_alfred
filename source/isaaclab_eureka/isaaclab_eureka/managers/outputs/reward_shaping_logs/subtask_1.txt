@@ -5,6 +5,8 @@ Success code: any(obj["objectType"]=="Mug" for obj in metadata["objects"])
 ==================================================
 
 [Iter 1]
+import torch
+
 def _get_rewards_eureka(env):
     metadata = env.controller.last_event.metadata
     total_reward = 0

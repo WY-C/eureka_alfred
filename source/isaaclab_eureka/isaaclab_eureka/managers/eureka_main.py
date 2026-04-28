@@ -17,16 +17,31 @@ TRAINING_STEPS = 1000000
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
 SYSTEM_PROMPT = """
-You are a reward engineer trying to write reward functions to solve reinforcement learning
-tasks as effective as possible.
-Your goal is to write a reward function for the environment that will help the agent learn the
-task described in text.
-Your reward function should use useful variables from the environment as inputs. As an example,
-the reward function signature can be:
-def _get_rewards_eureka(env):
-    total_reward = 0
+You are a reward engineer trying to write reward functions to solve reinforcement learning tasks as effective as possible.
+Your goal is to write a reward function for the environment that will help the agent learn the task described in text.
+Your reward function should use useful variables from the environment as inputs.
+
+As an example, the reward function signature can be:
+def _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     rewards_dict = {}
     ...
+    return total_reward, rewards_dict
+
+** IMPORTANT ** 
+You have to write that reward components is the key and its reward value is the value of the rewards_dict. 
+
+Below is one example of the reward function:
+def _get_rewards_eureka(object_rot: torch.Tensor, goal_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    rot_diff = torch.abs(torch.sum(object_rot * goal_rot, dim=1) - 1) / 2
+    rotation_reward = torch.exp(-20 * rot_diff)
+
+    # Scaling factor for the rotation reward
+    rotation_temp = 20.0
+    total_reward = rotation_reward
+
+    rewards_dict = {
+        "rotation_reward": rotation_reward
+    }
     return total_reward, rewards_dict
 
 """
@@ -297,6 +312,22 @@ def run_train_loop():
             print(f"\n🔄 Iter {i+1}")
 
             reward_prompt = f"""
+We trained a RL policy using the provided reward function code and tracked the values of the
+individual components in the reward function as well as global policy metrics such as
+success rates and episode lengths after every 20 epochs and the maximum, mean,
+minimum values encountered:
+<REWARD REFLECTION HERE>
+
+Please carefully analyze the policy feedback and provide a new, improved reward function that can better solve the task. 
+Some helpful tips for analyzing the policy feedback:
+    (1) If the success rates are always near zero, then you must rewrite the entire reward function
+    (2) If the values for a certain reward component are near identical throughout, then this means RL is not able to optimize this component as it is written. 
+        You may consider
+            (a) Changing its scale or the value of its temperature parameter
+            (b) Re-writing the reward component
+            (c) Discarding the reward component
+    (3) If some reward components’ magnitude is significantly larger, then you must re-scale its value to a proper range
+Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 Main Task:
 {TASK_DESCRIPTION}
 
