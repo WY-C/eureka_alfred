@@ -71,6 +71,7 @@ class EurekaThorWrapper(gym.Wrapper):
         self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
 
         self._eureka_components_history = {}
+        self._reward_components_per_epoches = {}
 
         self.last_obs = None
 
@@ -176,7 +177,7 @@ class EurekaThorWrapper(gym.Wrapper):
 
         # 🔥 reward shaping
         if self._get_rewards_eureka is not None:
-            print(self._get_rewards_eureka(self))
+            #print(self._get_rewards_eureka(self))
             r, reward_dict = self._get_rewards_eureka(self)
             for reward_component in reward_dict:
                 if reward_component not in self._eureka_components_history:
@@ -187,6 +188,13 @@ class EurekaThorWrapper(gym.Wrapper):
 
         # 🔥🔥🔥 핵심 추가
         if terminated or truncated:
+            for reward_component in reward_dict:
+                if reward_component not in self._reward_components_per_epoches:
+                    self._reward_components_per_epoches[reward_component] = []
+                self._reward_components_per_epoches[reward_component].append(
+                    sum(self._eureka_components_history.get(reward_component, [0.0]))
+                )
+            print("self._reward_components_per_epoches:", self._reward_components_per_epoches)
             info["terminal_observation"] = normalize_obs(obs)
 
         return obs, reward, terminated, truncated, info
@@ -203,6 +211,9 @@ class EurekaThorWrapper(gym.Wrapper):
         target = self.find_target_object()
         obs = self.build_observation(target)
         obs = normalize_obs(obs)
+
+        self._eureka_components_history = {}
+        #self._reward_components_per_epoches = {}
 
         return obs, info
 

@@ -1,7 +1,7 @@
-Subtask: Locate Mug
-Subtask label: locate_pickupable_object
+Subtask: Pick up mug
+Subtask label: pick_up_pickupable,
 Category: pickupable
-Success code: any(obj["objectType"]=="Mug" for obj in metadata["objects"])
+Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
 ==================================================
 
 [Iter 1]
@@ -9,28 +9,84 @@ import torch
 
 def _get_rewards_eureka(env):
     metadata = env.controller.last_event.metadata
-    total_reward = 0
-    rewards_dict = {}
+    
+    # Find the closest mug
+    mugs = [obj for obj in metadata["objects"] if obj["objectType"] == "Mug"]
+    if not mugs:
+        total_reward = torch.tensor(0.0)
+        rewards_dict = {
+            "distance_reward": torch.tensor(0.0),
+            "reachability_reward": torch.tensor(0.0),
+            "pickup_reward": torch.tensor(0.0)
+        }
+        return total_reward, rewards_dict
+    
+    closest_mug = min(mugs, key=lambda obj: obj["distance"])
+    
+    # Distance to the mug
+    distance_to_mug = closest_mug["distance"]
+    distance_reward = torch.exp(-5 * distance_to_mug)
+    
+    # Reachability of the mug
+    reachable = closest_mug["reachable"]
+    reachability_reward = torch.tensor(1.0 if reachable else 0.0)
+    
+    # Check if the mug is picked up
+    inventory_objects = [obj["objectType"] for obj in metadata["inventoryObjects"]]
+    pickup_reward = torch.tensor(10.0 if "Mug" in inventory_objects else 0.0)
+    
+    # Total reward
+    total_reward = distance_reward + reachability_reward + pickup_reward
+    
+    rewards_dict = {
+        "distance_reward": distance_reward,
+        "reachability_reward": reachability_reward,
+        "pickup_reward": pickup_reward
+    }
+    
+    return total_reward, rewards_dict
 
-    # Reward for being close to the mug
-    mug_objects = [obj for obj in metadata["objects"] if "Mug" in obj["objectType"]]
-    closest_mug_distance = float('inf')
-    for mug in mug_objects:
-        if mug["visible"]:
-            closest_mug_distance = min(closest_mug_distance, mug["distance"])
 
-    if closest_mug_distance < float('inf'):
-        distance_reward = 1 / (closest_mug_distance + 1)  # Ensure no division by zero
-        total_reward += distance_reward
-        rewards_dict["distance_reward"] = distance_reward
+[Iter 2]
+import torch
 
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    
+    # Get the position of the mug
+    mug_pos = None
+    for obj in metadata['objects']:
+        if obj['objectType'].lower() == 'mug':
+            mug_pos = torch.tensor([obj['position']['x'], obj['position']['y'], obj['position']['z']], dtype=torch.float32)
+            break
+    
+    # Get the agent's position
+    agent_pos = torch.tensor([metadata['agent']['position']['x'], metadata['agent']['position']['y'], metadata['agent']['position']['z']], dtype=torch.float32)
+    
+    # Calculate the distance between the agent and the mug
+    distance_to_mug = torch.norm(agent_pos - mug_pos)
+    
+    # Check if the mug is picked up
+    is_picked_up = any(obj['objectType'].lower() == 'mug' for obj in metadata['inventoryObjects'])
+    
+    # Reward for proximity to the mug
+    proximity_reward = -distance_to_mug  # Closer means higher reward
+    
     # Reward for picking up the mug
-    picked_up_mug = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    if picked_up_mug:
-        pick_up_reward = 10
-        total_reward += pick_up_reward
-        rewards_dict["pick_up_reward"] = pick_up_reward
-
+    pickup_reward = 5.0 if is_picked_up else 0.0
+    
+    # Penalty for bumping into obstacles
+    bump_penalty = -0.1 if metadata['lastActionSuccess'] is False else 0.0
+    
+    # Combine rewards and penalties
+    total_reward = proximity_reward + pickup_reward + bump_penalty
+    
+    rewards_dict = {
+        "proximity_reward": proximity_reward,
+        "pickup_reward": pickup_reward,
+        "bump_penalty": bump_penalty
+    }
+    
     return total_reward, rewards_dict
 
 
