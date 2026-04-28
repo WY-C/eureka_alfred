@@ -1,92 +1,55 @@
 Subtask: Pick up mug
-Subtask label: pick_up_pickupable,
-Category: pickupable
-Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
+Subtask label: place_object_on_receptacle,
+Category: receptacle
+Success code: any(obj["objectType"].startswith("Mug") for obj in metadata["inventoryObjects"])
 ==================================================
 
 [Iter 1]
 import torch
 
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    
-    # Find the closest mug
-    mugs = [obj for obj in metadata["objects"] if obj["objectType"] == "Mug"]
-    if not mugs:
-        total_reward = torch.tensor(0.0)
-        rewards_dict = {
-            "distance_reward": torch.tensor(0.0),
-            "reachability_reward": torch.tensor(0.0),
-            "pickup_reward": torch.tensor(0.0)
-        }
-        return total_reward, rewards_dict
-    
-    closest_mug = min(mugs, key=lambda obj: obj["distance"])
-    
-    # Distance to the mug
-    distance_to_mug = closest_mug["distance"]
-    distance_reward = torch.exp(-5 * distance_to_mug)
-    
-    # Reachability of the mug
-    reachable = closest_mug["reachable"]
-    reachability_reward = torch.tensor(1.0 if reachable else 0.0)
-    
-    # Check if the mug is picked up
-    inventory_objects = [obj["objectType"] for obj in metadata["inventoryObjects"]]
-    pickup_reward = torch.tensor(10.0 if "Mug" in inventory_objects else 0.0)
-    
+def _get_rewards_place_mug(metadata: dict) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # Extract relevant information from metadata
+    objects = metadata.get("objects", [])
+    inventory_objects = metadata.get("inventoryObjects", [])
+
+    # Check if the mug is in the agent's hand
+    mug_in_hand = any(obj["objectType"].startswith("Mug") for obj in inventory_objects)
+
+    # Find the mug and the countertop positions
+    mug_pos = None
+    counter_pos = None
+    for obj in objects:
+        if obj["objectType"].startswith("Mug"):
+            mug_pos = torch.tensor(obj["position"])
+        elif obj["objectType"] == "CounterTop":
+            counter_pos = torch.tensor(obj["position"])
+
+    # Calculate distance between mug and countertop
+    if mug_pos is not None and counter_pos is not None:
+        distance_to_counter = torch.norm(mug_pos - counter_pos)
+    else:
+        distance_to_counter = float('inf')
+
+    # Check if the mug is on the countertop
+    mug_on_counter = any(
+        obj["objectType"].startswith("Mug") and "CounterTop" in obj.get("parentReceptacles", [])
+        for obj in objects
+    )
+
+    # Reward components
+    distance_reward = torch.exp(-10 * distance_to_counter)  # Increased temperature parameter
+    mug_in_hand_reward = float(mug_in_hand)
+    mug_on_counter_reward = float(mug_on_counter)
+
     # Total reward
-    total_reward = distance_reward + reachability_reward + pickup_reward
-    
+    total_reward = 5 * distance_reward + 2 * mug_in_hand_reward + 10 * mug_on_counter_reward
+
     rewards_dict = {
         "distance_reward": distance_reward,
-        "reachability_reward": reachability_reward,
-        "pickup_reward": pickup_reward
+        "mug_in_hand_reward": mug_in_hand_reward,
+        "mug_on_counter_reward": mug_on_counter_reward
     }
-    
-    return total_reward, rewards_dict
 
-
-[Iter 2]
-import torch
-
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    
-    # Get the position of the mug
-    mug_pos = None
-    for obj in metadata['objects']:
-        if obj['objectType'].lower() == 'mug':
-            mug_pos = torch.tensor([obj['position']['x'], obj['position']['y'], obj['position']['z']], dtype=torch.float32)
-            break
-    
-    # Get the agent's position
-    agent_pos = torch.tensor([metadata['agent']['position']['x'], metadata['agent']['position']['y'], metadata['agent']['position']['z']], dtype=torch.float32)
-    
-    # Calculate the distance between the agent and the mug
-    distance_to_mug = torch.norm(agent_pos - mug_pos)
-    
-    # Check if the mug is picked up
-    is_picked_up = any(obj['objectType'].lower() == 'mug' for obj in metadata['inventoryObjects'])
-    
-    # Reward for proximity to the mug
-    proximity_reward = -distance_to_mug  # Closer means higher reward
-    
-    # Reward for picking up the mug
-    pickup_reward = 5.0 if is_picked_up else 0.0
-    
-    # Penalty for bumping into obstacles
-    bump_penalty = -0.1 if metadata['lastActionSuccess'] is False else 0.0
-    
-    # Combine rewards and penalties
-    total_reward = proximity_reward + pickup_reward + bump_penalty
-    
-    rewards_dict = {
-        "proximity_reward": proximity_reward,
-        "pickup_reward": pickup_reward,
-        "bump_penalty": bump_penalty
-    }
-    
     return total_reward, rewards_dict
 
 

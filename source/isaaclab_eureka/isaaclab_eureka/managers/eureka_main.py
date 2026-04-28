@@ -328,40 +328,6 @@ Some helpful tips for analyzing the policy feedback:
             (c) Discarding the reward component
     (3) If some reward components’ magnitude is significantly larger, then you must re-scale its value to a proper range
 Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
-Main Task:
-{TASK_DESCRIPTION}
-
-Current Subtask:
-{subtask}
-
-Previous Reward Function:
-{best_reward_code if i > 0 else "None"}
-
-Feedback:
-{last_feedback}
-
-Improve the reward.
-
-Improve the previous reward function.
-DO NOT repeat the same logic.
-
-CRITICAL:
-
-You MUST define EXACTLY this function:
-
-def _get_rewards_eureka(env):
-
-If you fail, the code will crash.
-
-Please carefully analyze the policy feedback and provide a new, improved reward function that
-can better solve the task. Some helpful tips for analyzing the policy feedback:
-    (1) If the success rates are always near zero, then you must rewrite the entire reward function
-    (2) If the values for a certain reward component are near identical throughout, then this means RL is not able to optimize this component as it is written. You may consider
-        (a) Changing its scale or the value of its temperature parameter
-        (b) Re-writing the reward component
-        (c) Discarding the reward component
-    (3) If some reward components’ magnitude is significantly larger, then you must re-scale its value to a proper range
-Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
 
             response = llm.prompt(reward_prompt)

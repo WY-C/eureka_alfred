@@ -5,7 +5,7 @@ import traceback
 import multiprocessing
 import numpy as np
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Tuple, Dict
 
 import gymnasium as gym
 from stable_baselines3 import PPO
