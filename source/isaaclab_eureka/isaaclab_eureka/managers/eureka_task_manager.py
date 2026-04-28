@@ -46,6 +46,7 @@ def normalize_obs(obs):
 # -------------------------
 class EurekaThorWrapper(gym.Wrapper):
     def __init__(self, env):
+        
         super().__init__(env)
 
         if hasattr(env.action_space, "spaces"):
@@ -68,6 +69,8 @@ class EurekaThorWrapper(gym.Wrapper):
 
         self._get_rewards_eureka = None
         self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
+
+        self._eureka_components_history = {}
 
         self.last_obs = None
 
@@ -168,14 +171,17 @@ class EurekaThorWrapper(gym.Wrapper):
 
         self.last_obs = obs
 
-        # print("\n[STEP OBS]")
-        # for k, v in obs.items():
-        #     if k != "env_obs":
-        #         print(f"{k}: {v} shape={getattr(v, 'shape', None)}")
+
+        
 
         # 🔥 reward shaping
         if self._get_rewards_eureka is not None:
-            r, _ = self._get_rewards_eureka(self)
+            print(self._get_rewards_eureka(self))
+            r, reward_dict = self._get_rewards_eureka(self)
+            for reward_component in reward_dict:
+                if reward_component not in self._eureka_components_history:
+                    self._eureka_components_history[reward_component] = []
+                self._eureka_components_history[reward_component].append(reward_dict[reward_component])
             reward += r
             self._eureka_episode_sums["eureka_total_rewards"] += r
 
