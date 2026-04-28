@@ -1,0 +1,21 @@
+{"system": "You are a reward engineer trying to write reward functions to solve reinforcement learning tasks as effective as possible.\nYour goal is to write a reward function for the environment that will help the agent learn the task described in text.\nYour reward function should use useful variables from the environment as inputs.\nAs an example, the reward function signature can be:\ndef _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    rewards_dict = {}
+    ...
+    return total_reward, rewards_dict
+
+** IMPORTANT ** 
+You have to write that reward components is the key and its reward value is the value of the rewards_dict. 
+
+Below is one example of the reward function:
+def _get_rewards_eureka(object_rot: torch.Tensor, goal_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    rot_diff = torch.abs(torch.sum(object_rot * goal_rot, dim=1) - 1) / 2
+    rotation_reward = torch.exp(-20 * rot_diff)
+
+    # Scaling factor for the rotation reward
+    rotation_temp = 20.0
+    total_reward = rotation_reward
+
+    rewards_dict = {
+        "rotation_reward": rotation_reward
+    }
+    return total_reward, rewards_dict"}

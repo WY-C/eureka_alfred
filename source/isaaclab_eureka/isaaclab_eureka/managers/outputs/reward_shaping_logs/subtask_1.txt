@@ -1,53 +1,66 @@
-Subtask: Pick up mug
+Subtask: Pick up Mug
 Subtask label: place_object_on_receptacle,
 Category: receptacle
-Success code: any(obj["objectType"].startswith("Mug") for obj in metadata["inventoryObjects"])
+Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
 ==================================================
 
 [Iter 1]
-import torch
+def _get_rewards_eureka(env_wrapper):
+    metadata = env_wrapper.controller.last_event.metadata
 
-def _get_rewards_place_mug(metadata: dict) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    # Extract relevant information from metadata
-    objects = metadata.get("objects", [])
-    inventory_objects = metadata.get("inventoryObjects", [])
+    # Find the target object
+    target_object = env_wrapper.find_target_object()
+    
+    rewards_dict = {}
 
-    # Check if the mug is in the agent's hand
-    mug_in_hand = any(obj["objectType"].startswith("Mug") for obj in inventory_objects)
+    # Precondition: Check if the target object is visible
+    is_visible = 0
+    if target_object is not None:
+        is_visible = target_object["visible"]
 
-    # Find the mug and the countertop positions
-    mug_pos = None
-    counter_pos = None
-    for obj in objects:
-        if obj["objectType"].startswith("Mug"):
-            mug_pos = torch.tensor(obj["position"])
-        elif obj["objectType"] == "CounterTop":
-            counter_pos = torch.tensor(obj["position"])
+    # Reward for object visibility
+    visibility_reward = is_visible * 2.0  # Increased scale to prioritize visibility
 
-    # Calculate distance between mug and countertop
-    if mug_pos is not None and counter_pos is not None:
-        distance_to_counter = torch.norm(mug_pos - counter_pos)
-    else:
-        distance_to_counter = float('inf')
+    # Reward for distance to object (scaled down)
+    distance_to_object = 0.0
+    if target_object is not None:
+        distance_to_object = max(0.1, target_object["distance"])  # Avoid division by zero
+    distance_reward = 1.0 / distance_to_object  # Reward inversely proportional to distance
 
-    # Check if the mug is on the countertop
-    mug_on_counter = any(
-        obj["objectType"].startswith("Mug") and "CounterTop" in obj.get("parentReceptacles", [])
-        for obj in objects
-    )
+    # Reward for picking up the object
+    picked_up = 0
+    inventory_objects = metadata.get('inventoryObjects', [])
+    for obj in inventory_objects:
+        if obj['objectType'] == env_wrapper.target_object_type:
+            picked_up = 1
+            break
 
-    # Reward components
-    distance_reward = torch.exp(-10 * distance_to_counter)  # Increased temperature parameter
-    mug_in_hand_reward = float(mug_in_hand)
-    mug_on_counter_reward = float(mug_on_counter)
+    pick_up_object_reward = picked_up * 5.0  # Increased reward for picking up the object
+
+    # Reward for placing object on countertop
+    placed_on_counter = 0
+    interacted_objects = env_wrapper.get_interacted_objects()
+    for obj in interacted_objects["opened"] + interacted_objects["toggled"] + interacted_objects["broken"]:
+        if obj.get("parentReceptacles") and any("CounterTop" in p for p in obj.get("parentReceptacles")):
+            placed_on_counter = 1
+            break
+
+    place_object_on_receptacle_reward = placed_on_counter * 10.0  # High reward for placing on countertop
 
     # Total reward
-    total_reward = 5 * distance_reward + 2 * mug_in_hand_reward + 10 * mug_on_counter_reward
+    total_reward = (
+        visibility_reward +
+        distance_reward +
+        pick_up_object_reward +
+        place_object_on_receptacle_reward
+    )
 
+    # Store the reward components in the dictionary
     rewards_dict = {
+        "visibility_reward": visibility_reward,
         "distance_reward": distance_reward,
-        "mug_in_hand_reward": mug_in_hand_reward,
-        "mug_on_counter_reward": mug_on_counter_reward
+        "pick_up_object_reward": pick_up_object_reward,
+        "place_object_on_receptacle_reward": place_object_on_receptacle_reward
     }
 
     return total_reward, rewards_dict

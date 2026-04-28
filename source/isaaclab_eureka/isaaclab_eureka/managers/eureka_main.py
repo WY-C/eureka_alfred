@@ -2,9 +2,10 @@
 import os
 import re
 import multiprocessing as mp
+import inspect
 
 from llm_manager import LLMManager
-from eureka_task_manager import EurekaTaskManager
+from eureka_task_manager import EurekaTaskManager, EurekaThorWrapper
 from policy_manager import PolicyManager
 
 # --- Config ---
@@ -12,18 +13,21 @@ GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1  
 TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
-TRAINING_STEPS = 1000000
+TRAINING_STEPS = 20000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT = f"""
 You are a reward engineer trying to write reward functions to solve reinforcement learning tasks as effective as possible.
 Your goal is to write a reward function for the environment that will help the agent learn the task described in text.
 Your reward function should use useful variables from the environment as inputs.
 
+The environment source code is:
+{inspect.getsource(EurekaThorWrapper)}
+
 As an example, the reward function signature can be:
-def _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    rewards_dict = {}
+def _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor):
+    rewards_dict = dict()
     ...
     return total_reward, rewards_dict
 
@@ -31,7 +35,7 @@ def _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor) -> Tup
 You have to write that reward components is the key and its reward value is the value of the rewards_dict. 
 
 Below is one example of the reward function:
-def _get_rewards_eureka(object_rot: torch.Tensor, goal_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+def _get_rewards_eureka(object_rot: torch.Tensor, goal_rot: torch.Tensor):
     rot_diff = torch.abs(torch.sum(object_rot * goal_rot, dim=1) - 1) / 2
     rotation_reward = torch.exp(-20 * rot_diff)
 
@@ -39,9 +43,9 @@ def _get_rewards_eureka(object_rot: torch.Tensor, goal_rot: torch.Tensor) -> Tup
     rotation_temp = 20.0
     total_reward = rotation_reward
 
-    rewards_dict = {
+    rewards_dict = {{
         "rotation_reward": rotation_reward
-    }
+    }}
     return total_reward, rewards_dict
 
 """
@@ -312,11 +316,12 @@ def run_train_loop():
             print(f"\n🔄 Iter {i+1}")
 
             reward_prompt = f"""
+            We are currently focusing ONLY on this specific subtask: {subtask}
 We trained a RL policy using the provided reward function code and tracked the values of the
 individual components in the reward function as well as global policy metrics such as
 success rates and episode lengths after every 20 epochs and the maximum, mean,
 minimum values encountered:
-<REWARD REFLECTION HERE>
+{e}
 
 Please carefully analyze the policy feedback and provide a new, improved reward function that can better solve the task. 
 Some helpful tips for analyzing the policy feedback:

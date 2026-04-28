@@ -186,6 +186,12 @@ class EurekaThorWrapper(gym.Wrapper):
             reward += r
             self._eureka_episode_sums["eureka_total_rewards"] += r
 
+        # print(self.controller.last_event.metadata.get('inventoryObjects'))
+        if self.controller.last_event.metadata.get('inventoryObjects') and self.controller.last_event.metadata.get('inventoryObjects')[0]['objectType'] == self.target_object_type:
+            terminated = True
+            print('상황종료됨')
+            # print('상황종료됨')
+            # print('상황종료됨')
         # 🔥🔥🔥 핵심 추가
         if terminated or truncated:
             for reward_component in reward_dict:
@@ -196,6 +202,8 @@ class EurekaThorWrapper(gym.Wrapper):
                 )
             print("self._reward_components_per_epoches:", self._reward_components_per_epoches)
             info["terminal_observation"] = normalize_obs(obs)
+
+
 
         return obs, reward, terminated, truncated, info
 
@@ -399,7 +407,7 @@ class EurekaTaskManager:
                     done = False
                     while not done:
                         action, _ = model.predict(obs)
-                        print(f'action: {action}')
+                        #print(f'action: {action}')
                         obs, _, terminated, truncated, _ = self.thor_env.step(action)
                         done = terminated or truncated
 
