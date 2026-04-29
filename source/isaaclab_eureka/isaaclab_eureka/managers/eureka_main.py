@@ -12,7 +12,7 @@ from policy_manager import PolicyManager
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1
 TEMPERATURE = 1.2
-MAX_ITERATIONS = 5   
+MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
 TRAINING_STEPS = 70000
 
@@ -312,21 +312,23 @@ def run_train_loop():
         best_success_rate = -1.0
         best_reward_code = None
 
-        last_feedback = f"Focus ONLY on subtask: {subtask}"
+        components_feedback = ""
+        last_feedback = ""
+        i = 0
+        while i < MAX_ITERATIONS:
 
-        components_feedback = {}
-
-        for i in range(MAX_ITERATIONS):               
-            
             print(f"\n🔄 Iter {i+1}")
-            feedback_str = components_feedback if components_feedback else "No feedback available yet (First Iteration)."
+            reward_components_feedback = components_feedback if components_feedback else "No feedback available yet (First Iteration)."
             reward_prompt = f"""
             We are currently focusing ONLY on this specific subtask: {subtask}
 We trained a RL policy using the provided reward function code and tracked the values of the
 individual components in the reward function as well as global policy metrics such as
 success rates and episode lengths after all epochs and the maximum, mean,
 minimum values encountered:
-{feedback_str}
+{reward_components_feedback}
+
+[Qualitative Analysis & Correction]
+{last_feedback}
 
 Please carefully analyze the policy feedback and provide a new, improved reward function that can better solve the task. 
 Some helpful tips for analyzing the policy feedback:
@@ -362,13 +364,14 @@ Please analyze each existing reward component in the suggested manner above firs
             results = task_manager.train(reward_data)
             result = results[0]
 
-            # print(result["train_success_rate"])
 
             if not result["success"]:
                 last_feedback = f"Error: {result['exception']}"
                 continue
             score = result["reward_mean"]
             success_rate = result["success_rate"]
+            train_success_rate = result["train_success_rate"]
+            print(f"Training Success Rate: {train_success_rate:.4f}")
 
             raw_components = result.get("reward_components", {})
             
@@ -414,7 +417,7 @@ Please analyze each existing reward component in the suggested manner above firs
                 )
 
             elif success_rate < 0.5:
-                last_feedback = (
+                last_feedback += (
                     "The agent sometimes succeeds but is unstable. "
                     "Improve reward shaping to guide behavior more consistently. "
                     "Use distance-based shaping and intermediate milestones."
@@ -434,6 +437,8 @@ Please analyze each existing reward component in the suggested manner above firs
                 )
 
             print(f"Score: {score}, SuccessRate: {success_rate}")
+            
+            i += 1
 
             # 🔥 여기 핵심: model 가져오기
             # best_state_dict = result["model_state_dict"]

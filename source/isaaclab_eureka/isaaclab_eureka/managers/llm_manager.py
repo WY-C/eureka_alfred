@@ -86,6 +86,7 @@ class LLMManager:
             self._prompts.pop(2)
             self._prompts.pop(2)
 
+        # print(self._prompts)
         try:
             responses = self._client.chat.completions.create(
                 model=self._gpt_model,

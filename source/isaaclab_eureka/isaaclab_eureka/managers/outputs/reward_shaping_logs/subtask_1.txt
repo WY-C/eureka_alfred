@@ -1,6 +1,38 @@
 Subtask: Pick up Mug
 Subtask label: pick_up_pickupable
 Category: pickupable
-Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
+Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
 ==================================================
+
+[Iter 1]
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    # Distance Reward
+    distance = target["distance"] if target else float('inf')
+    distance_reward = -distance * 0.1  # Negative reward proportional to distance
+
+    # Visibility Reward
+    visibility_reward = target["visible"] * 1.0 if target else 0.0  # Positive reward for visibility
+
+    # Interaction Reward
+    interacted_objects = env.get_interacted_objects()
+    interaction_reward = 1.0 if any(obj["objectType"] == target["objectType"] for obj in interacted_objects["inventory"]) else 0.0
+
+    # Success Reward
+    success_reward = 10.0 if any(obj["objectType"] == target["objectType"] for obj in interacted_objects["inventory"]) else 0.0
+
+    # Combine Rewards
+    total_reward = distance_reward + visibility_reward + interaction_reward + success_reward
+
+    rewards_dict = {
+        "distance_reward": distance_reward,
+        "visibility_reward": visibility_reward,
+        "interaction_reward": interaction_reward,
+        "success_reward": success_reward
+    }
+    
+    return total_reward, rewards_dict
+
 
