@@ -5,34 +5,51 @@ Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects
 ==================================================
 
 [Iter 1]
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    target = env.find_target_object()
+def _get_rewards_eureka(env_wrapper):
+    metadata = env_wrapper.controller.last_event.metadata
+    target = env_wrapper.find_target_object()
+    target_type = env_wrapper.target_object_type
 
-    # Distance Reward
-    distance = target["distance"] if target else float('inf')
-    distance_reward = -distance * 0.1  # Negative reward proportional to distance
+    rewards_dict = {}
 
-    # Visibility Reward
-    visibility_reward = target["visible"] * 1.0 if target else 0.0  # Positive reward for visibility
+    # Distance reward
+    distance_threshold = 1.0
+    if target:
+        distance = target["distance"]
+        distance_reward = max(0, 1 - distance / distance_threshold)
+    else:
+        distance_reward = 0
+    rewards_dict["distance_reward"] = distance_reward
 
-    # Interaction Reward
-    interacted_objects = env.get_interacted_objects()
-    interaction_reward = 1.0 if any(obj["objectType"] == target["objectType"] for obj in interacted_objects["inventory"]) else 0.0
+    # Visibility reward
+    if target and target["visible"]:
+        visibility_reward = 1.0
+    else:
+        visibility_reward = 0.0
+    rewards_dict["visibility_reward"] = visibility_reward
 
-    # Success Reward
-    success_reward = 10.0 if any(obj["objectType"] == target["objectType"] for obj in interacted_objects["inventory"]) else 0.0
+    # Proximity reward
+    proximity_threshold = 0.2
+    if target:
+        proximity_reward = 1.0 if target["distance"] <= proximity_threshold else 0.0
+    else:
+        proximity_reward = 0.0
+    rewards_dict["proximity_reward"] = proximity_reward
 
-    # Combine Rewards
-    total_reward = distance_reward + visibility_reward + interaction_reward + success_reward
+    # Pick-up reward
+    if metadata.get('inventoryObjects') and metadata['inventoryObjects'][0]['objectType'] == target_type:
+        pick_up_reward = 10.0
+    else:
+        pick_up_reward = 0.0
+    rewards_dict["pick_up_reward"] = pick_up_reward
 
-    rewards_dict = {
-        "distance_reward": distance_reward,
-        "visibility_reward": visibility_reward,
-        "interaction_reward": interaction_reward,
-        "success_reward": success_reward
-    }
-    
+    total_reward = (
+        distance_reward +
+        visibility_reward +
+        proximity_reward +
+        pick_up_reward
+    )
+
     return total_reward, rewards_dict
 
 

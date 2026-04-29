@@ -417,7 +417,7 @@ Please analyze each existing reward component in the suggested manner above firs
                 )
 
             elif success_rate < 0.5:
-                last_feedback += (
+                last_feedback = (
                     "The agent sometimes succeeds but is unstable. "
                     "Improve reward shaping to guide behavior more consistently. "
                     "Use distance-based shaping and intermediate milestones."
