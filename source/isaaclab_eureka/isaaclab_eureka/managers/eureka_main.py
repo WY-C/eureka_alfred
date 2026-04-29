@@ -12,8 +12,10 @@ from policy_manager import PolicyManager
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1  
 TEMPERATURE = 1.2
-MAX_ITERATIONS = 5   
-TRAINING_STEPS = 20000
+MAX_ITERATIONS = 5
+
+#TODO
+TRAINING_STEPS = 1000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -312,16 +314,17 @@ def run_train_loop():
 
         last_feedback = f"Focus ONLY on subtask: {subtask}"
 
-        for i in range(MAX_ITERATIONS):
+        for i in range(MAX_ITERATIONS):               
+            
             print(f"\n🔄 Iter {i+1}")
-
             reward_prompt = f"""
             We are currently focusing ONLY on this specific subtask: {subtask}
 We trained a RL policy using the provided reward function code and tracked the values of the
 individual components in the reward function as well as global policy metrics such as
 success rates and episode lengths after every 20 epochs and the maximum, mean,
 minimum values encountered:
-{e}
+#TODO 값이 제대로 안나옴
+{task_manager.thor_env._reward_components_per_epoches}
 
 Please carefully analyze the policy feedback and provide a new, improved reward function that can better solve the task. 
 Some helpful tips for analyzing the policy feedback:
@@ -334,7 +337,8 @@ Some helpful tips for analyzing the policy feedback:
     (3) If some reward components’ magnitude is significantly larger, then you must re-scale its value to a proper range
 Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
-
+            print(reward_prompt)
+            # task_manager.thor_env.reset_reward_components_per_epoches()
             response = llm.prompt(reward_prompt)
             reward_strings = response["reward_strings"]
 
