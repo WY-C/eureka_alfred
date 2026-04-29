@@ -13,7 +13,7 @@ GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1  
 TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
-TRAINING_STEPS = 20000
+TRAINING_STEPS = 10000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -321,7 +321,7 @@ We trained a RL policy using the provided reward function code and tracked the v
 individual components in the reward function as well as global policy metrics such as
 success rates and episode lengths after every 20 epochs and the maximum, mean,
 minimum values encountered:
-{e}
+{task_manager.thor_env._reward_components_per_epoches}
 
 Please carefully analyze the policy feedback and provide a new, improved reward function that can better solve the task. 
 Some helpful tips for analyzing the policy feedback:

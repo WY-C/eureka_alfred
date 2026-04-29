@@ -224,6 +224,9 @@ class EurekaThorWrapper(gym.Wrapper):
         #self._reward_components_per_epoches = {}
 
         return obs, info
+    
+    def reset_eureka_components_history(self):
+        self._eureka_components_history = {}
 
 def clean_code(code):
     # 1. list면 첫 번째 요소 사용

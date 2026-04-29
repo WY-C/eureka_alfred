@@ -1,68 +1,78 @@
 Subtask: Pick up Mug
-Subtask label: place_object_on_receptacle,
-Category: receptacle
-Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
+Subtask label: pick_up_object,
+Category: pickupable
+Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
 ==================================================
 
 [Iter 1]
-def _get_rewards_eureka(env_wrapper):
-    metadata = env_wrapper.controller.last_event.metadata
+def _get_rewards_eureka(wrapper):
+    metadata = wrapper.controller.last_event.metadata
+    target_object = wrapper.find_target_object()
 
-    # Find the target object
-    target_object = env_wrapper.find_target_object()
+    rewards_dict = dict()
+
+    # Distance Reward
+    if target_object:
+        distance = target_object["distance"]
+        distance_reward = np.exp(-0.1 * distance)  # Scale down the effect of distance
+    else:
+        distance_reward = 0.0
+    rewards_dict["distance_reward"] = distance_reward
+
+    # Visibility Reward
+    if target_object and target_object["visible"]:
+        visibility_reward = 1.0
+    else:
+        visibility_reward = 0.0
+    rewards_dict["visibility_reward"] = visibility_reward
+
+    # Pick Up Reward
+    interacted_objects = wrapper.get_interacted_objects()
+    inventory_objects = interacted_objects.get("inventory", [])
+    if any(obj["objectType"] == wrapper.target_object_type for obj in inventory_objects):
+        pick_up_reward = 10.0  # High reward for picking up the target object
+    else:
+        pick_up_reward = 0.0
+    rewards_dict["pick_up_reward"] = pick_up_reward
+
+    total_reward = distance_reward + visibility_reward + pick_up_reward
+
+    return total_reward, rewards_dict
+
+
+[Iter 2]
+import numpy as np
+
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target_object_type = env.target_object_type
     
     rewards_dict = {}
-
-    # Precondition: Check if the target object is visible
-    is_visible = 0
-    if target_object is not None:
-        is_visible = target_object["visible"]
-
-    # Reward for object visibility
-    visibility_reward = is_visible * 2.0  # Increased scale to prioritize visibility
-
-    # Reward for distance to object (scaled down)
-    distance_to_object = 0.0
-    if target_object is not None:
-        distance_to_object = max(0.1, target_object["distance"])  # Avoid division by zero
-    distance_reward = 1.0 / distance_to_object  # Reward inversely proportional to distance
-
-    # Reward for picking up the object
-    picked_up = 0
-    inventory_objects = metadata.get('inventoryObjects', [])
-    for obj in inventory_objects:
-        if obj['objectType'] == env_wrapper.target_object_type:
-            picked_up = 1
-            break
-
-    pick_up_object_reward = picked_up * 5.0  # Increased reward for picking up the object
-
-    # Reward for placing object on countertop
-    placed_on_counter = 0
-    interacted_objects = env_wrapper.get_interacted_objects()
-    for obj in interacted_objects["opened"] + interacted_objects["toggled"] + interacted_objects["broken"]:
-        if obj.get("parentReceptacles") and any("CounterTop" in p for p in obj.get("parentReceptacles")):
-            placed_on_counter = 1
-            break
-
-    place_object_on_receptacle_reward = placed_on_counter * 10.0  # High reward for placing on countertop
-
-    # Total reward
-    total_reward = (
-        visibility_reward +
-        distance_reward +
-        pick_up_object_reward +
-        place_object_on_receptacle_reward
-    )
-
-    # Store the reward components in the dictionary
-    rewards_dict = {
-        "visibility_reward": visibility_reward,
-        "distance_reward": distance_reward,
-        "pick_up_object_reward": pick_up_object_reward,
-        "place_object_on_receptacle_reward": place_object_on_receptacle_reward
-    }
-
+    
+    # Find the target object (mug) in the metadata
+    target_obj = next((obj for obj in metadata["objects"] if obj["objectType"] == target_object_type), None)
+    
+    # Check if the object is in the inventory (picked up)
+    picked_up = any(obj["objectType"] == target_object_type for obj in metadata["inventoryObjects"])
+    pick_up_object_reward = 10.0 if picked_up else 0.0
+    
+    # Progress reward based on distance to the target object
+    progress_reward = 0.0
+    if target_obj and target_obj["visible"] == 1:
+        distance_to_target = target_obj["distance"]
+        progress_reward = np.exp(-distance_to_target)  # Closer -> higher reward
+    
+    # Penalty for invalid actions
+    invalid_action_penalty = -1.0 if env.controller.last_event.metadata["lastActionSuccess"] == False else 0.0
+    
+    # Total reward calculation
+    total_reward = pick_up_object_reward + progress_reward + invalid_action_penalty
+    
+    # Populate the rewards dictionary
+    rewards_dict["pick_up_object_reward"] = pick_up_object_reward
+    rewards_dict["progress_reward"] = progress_reward
+    rewards_dict["invalid_action_penalty"] = invalid_action_penalty
+    
     return total_reward, rewards_dict
 
 
