@@ -1,316 +1,46 @@
 Subtask: Place Mug on CounterTop
-Subtask label: pick_up_pickupable,
+Subtask label: pick_up_object,
 Category: pickupable
-Success code: any(obj["objectType"] == "Mug" and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"])
+Success code: any(obj["objectType"]=="Mug" and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"])
 ==================================================
 
 [Iter 1]
 def _get_rewards_eureka(wrapper):
     metadata = wrapper.controller.last_event.metadata
     target = wrapper.find_target_object()
+    
+    rewards_dict = {}
 
-    # Initialize rewards
-    navigation_reward = 0.0
-    pickup_reward = 0.0
-    placement_reward = 0.0
-    completion_reward = 0.0
+    # Distance Reward: Encourage getting closer to the target object
+    distance_reward = 0
+    if target:
+        distance = target["distance"]
+        distance_reward = np.exp(-20 * distance)
+        rewards_dict["distance_reward"] = distance_reward
 
-    # Navigation Reward
-    if target is not None and target['visible']:
-        navigation_reward = -target['distance']
-    else:
-        navigation_reward = -10  # Penalize if the target is not visible
+    # Visibility Reward: Encourage the target object to be visible
+    visibility_reward = 0
+    if target and target["visible"]:
+        visibility_reward = 1.0
+        rewards_dict["visibility_reward"] = visibility_reward
 
-    # Pickup Reward
-    inventory = metadata.get('inventoryObjects', [])
-    if any(obj["objectType"] == wrapper.target_object_type for obj in inventory):
-        pickup_reward = 10
+    # Pickup Reward: Encourage picking up the target object
+    pickup_reward = 0
+    inventory_objects = metadata.get('inventoryObjects', [])
+    if any(obj["objectType"] == wrapper.target_object_type for obj in inventory_objects):
+        pickup_reward = 1.0
+        rewards_dict["pickup_reward"] = pickup_reward
 
-    # Placement Reward
-    interacted_objects = wrapper.get_interacted_objects()
-    if any(obj["objectType"] == wrapper.target_object_type and obj.get("parentReceptacles") and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in interacted_objects["opened"] + interacted_objects["toggled"] + interacted_objects["broken"] + metadata.get("objects", [])):
-        placement_reward = 20
-
-    # Completion Reward
-    if metadata.get('inventoryObjects') and metadata.get('inventoryObjects')[0]['objectType'] == wrapper.target_object_type and any(obj["objectType"] == wrapper.target_object_type and obj.get("parentReceptacles") and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata.get("objects", [])):
-        completion_reward = 50
-        wrapper.reset()  # Reset the environment when the task is completed
+    # Place Reward: Encourage placing the target object on the receptacle
+    place_reward = 0
+    objects = metadata.get('objects', [])
+    if any(obj["objectType"] == wrapper.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in objects):
+        place_reward = 10.0  # High reward for successful placement
+        rewards_dict["place_reward"] = place_reward
 
     # Total Reward
-    total_reward = navigation_reward + pickup_reward + placement_reward + completion_reward
+    total_reward = distance_reward + visibility_reward + pickup_reward + place_reward
 
-    # Rewards dictionary
-    rewards_dict = {
-        "navigation_reward": navigation_reward,
-        "pickup_reward": pickup_reward,
-        "placement_reward": placement_reward,
-        "completion_reward": completion_reward
-    }
-
-    return total_reward, rewards_dict
-
-
-[Iter 2]
-def _get_rewards_eureka(wrapper):
-    metadata = wrapper.controller.last_event.metadata
-
-    target_object_type = wrapper.target_object_type
-    target_object = wrapper.find_target_object()
-    interacted_objects = wrapper.get_interacted_objects()
-
-    rewards_dict = {}
-    total_reward = 0.0
-
-    # 1. Reward for picking up the target object
-    picked_up_reward = 0.0
-    if any(obj["objectType"] == target_object_type for obj in interacted_objects["inventory"]):
-        picked_up_reward = 10.0
-    rewards_dict["picked_up_reward"] = picked_up_reward
-    total_reward += picked_up_reward
-
-    # 2. Proximity reward when holding the target object
-    proximity_reward = 0.0
-    if picked_up_reward > 0:
-        target_receptacle = None
-        for obj in metadata["objects"]:
-            if obj["objectType"] == "CounterTop" and obj["visible"]:
-                target_receptacle = obj
-                break
-
-        if target_receptacle:
-            distance_to_receptacle = target_receptacle["distance"]
-            proximity_reward = max(0.0, 1.0 - (distance_to_receptacle / 1.0))  # Scale proximity reward between 0 and 1
-            proximity_reward *= 5.0  # Scale reward
-        else:
-            proximity_reward = -0.1  # Penalize if target receptacle is not visible
-
-    rewards_dict["proximity_reward"] = proximity_reward
-    total_reward += proximity_reward
-
-    # 3. Reward for placing the target object on the target receptacle
-    placed_reward = 0.0
-    for obj in interacted_objects["inventory"]:
-        if obj["objectType"] == target_object_type:
-            if any("CounterTop" in parent for parent in obj["parentReceptacles"]):
-                placed_reward = 20.0
-                break
-    rewards_dict["placed_reward"] = placed_reward
-    total_reward += placed_reward
-
-    # 4. Negative reward for moving away from the target object when not holding it
-    move_away_penalty = 0.0
-    if picked_up_reward == 0.0 and target_object:
-        current_distance = target_object["distance"]
-        if wrapper.last_obs is not None:
-            last_distance = wrapper.last_obs["distance"][0]
-            if current_distance > last_distance:
-                move_away_penalty = -1.0
-
-    rewards_dict["move_away_penalty"] = move_away_penalty
-    total_reward += move_away_penalty
-
-    # 5. Negative reward for not making progress towards the goal
-    no_progress_penalty = -0.05
-    rewards_dict["no_progress_penalty"] = no_progress_penalty
-    total_reward += no_progress_penalty
-
-    # 6. Penalty for taking too many steps
-    step_penalty = -0.01
-    rewards_dict["step_penalty"] = step_penalty
-    total_reward += step_penalty
-
-    return total_reward, rewards_dict
-
-
-[Iter 3]
-import numpy as np
-
-def _get_rewards_eureka(wrapper):
-    metadata = wrapper.controller.last_event.metadata
-
-    # Subtask: Find Mug
-    mug_visible = any(obj["objectType"] == "Mug" and obj["visible"] for obj in metadata["objects"])
-    mug_distance = min([obj["distance"] for obj in metadata["objects"] if obj["objectType"] == "Mug"], default=float('inf'))
-
-    # Subtask: Pick up Mug
-    mug_in_hand = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-
-    # Subtask: Place Mug on CounterTop
-    mug_on_counter = any(obj["objectType"] == "Mug" and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"])
-
-    # Episode Length Penalty
-    episode_length_penalty = -0.01  # Small negative reward per step to encourage faster completion
-
-    # Distance Reward
-    distance_reward = np.exp(-2.0 * mug_distance) if mug_visible else 0.0
-
-    # Visibility Reward
-    visibility_reward = 1.0 if mug_visible else 0.0
-
-    # In-hand Reward
-    in_hand_reward = 5.0 if mug_in_hand else 0.0
-
-    # On CounterTop Reward
-    on_counter_reward = 10.0 if mug_on_counter else 0.0
-
-    # Total Reward
-    total_reward = (
-        distance_reward +
-        visibility_reward +
-        in_hand_reward +
-        on_counter_reward +
-        episode_length_penalty
-    )
-
-    rewards_dict = {
-        "distance_reward": distance_reward,
-        "visibility_reward": visibility_reward,
-        "in_hand_reward": in_hand_reward,
-        "on_counter_reward": on_counter_reward,
-        "episode_length_penalty": episode_length_penalty
-    }
-
-    return total_reward, rewards_dict
-
-
-[Iter 4]
-import numpy as np
-
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-
-    # Precondition check for picking up the Mug
-    has_mug_in_inventory = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    
-    # Reward for picking up the Mug
-    pick_up_reward = 0.0
-    if not has_mug_in_inventory:
-        mugs_on_counter = [obj for obj in metadata["objects"] if obj["objectType"] == "Mug"]
-        closest_mug_distance = min((obj["distance"] for obj in mugs_on_counter), default=float('inf'))
-        pick_up_reward = np.exp(-2.0 * closest_mug_distance)  # Exponential decay with distance
-    
-    # Reward for approaching the CounterTop
-    approach_counter_reward = 0.0
-    if has_mug_in_inventory:
-        countertops = [obj for obj in metadata["objects"] if obj["objectType"] == "CounterTop"]
-        closest_counter_distance = min((obj["distance"] for obj in countertops), default=float('inf'))
-        approach_counter_reward = np.exp(-2.0 * closest_counter_distance)  # Exponential decay with distance
-    
-    # Reward for placing the Mug on the CounterTop
-    place_mug_reward = 0.0
-    if has_mug_in_inventory:
-        mugs_on_counter = [obj for obj in metadata["objects"] if obj["objectType"] == "Mug" and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"])]
-        if mugs_on_counter:
-            place_mug_reward = 10.0  # High reward for successfully placing the Mug
-
-    # Total reward is the sum of individual rewards
-    total_reward = pick_up_reward + approach_counter_reward + place_mug_reward
-
-    # Dictionary of reward components
-    rewards_dict = {
-        "pick_up_reward": pick_up_reward,
-        "approach_counter_reward": approach_counter_reward,
-        "place_mug_reward": place_mug_reward
-    }
-
-    return total_reward, rewards_dict
-
-
-[Iter 5]
-import numpy as np
-
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    
-    rewards_dict = {}
-    
-    # Subtask 1: Pick up Mug
-    pick_up_mug_success = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    pick_up_mug_reward = 10.0 * pick_up_mug_success
-    
-    # Subtask 2: Move Mug closer to CounterTop
-    mug_in_hand = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    mug_close_to_countertop = False
-    for obj in metadata["objects"]:
-        if obj["objectType"] == "Mug":
-            mug_close_to_countertop = any("CounterTop" in p for p in obj["receptacleObjectIds"])
-            break
-            
-    move_towards_countertop_reward = 5.0 * mug_in_hand * mug_close_to_countertop
-    
-    # Subtask 3: Place Mug on CounterTop
-    place_on_countertop_success = any("CounterTop" in p for p in obj["parentReceptacles"] for obj in metadata["objects"] if obj["objectType"] == "Mug")
-    place_on_countertop_reward = 20.0 * place_on_countertop_success
-    
-    # Negative reward for moving away from CounterTop if Mug is picked up
-    distance_to_countertop = np.inf
-    if mug_in_hand:
-        for obj in metadata["objects"]:
-            if obj["objectType"] == "Mug":
-                distance_to_countertop = min([obj["distanceToClosestObject"] for recp in metadata["objects"] if recp["objectType"] == "CounterTop"])
-                break
-                
-    move_away_penalty = -2.0 * mug_in_hand * (distance_to_countertop > 1.0)
-    
-    # Sum all rewards and penalties
-    total_reward = pick_up_mug_reward + move_towards_countertop_reward + place_on_countertop_reward + move_away_penalty
-    
-    rewards_dict = {
-        "pick_up_mug_reward": pick_up_mug_reward,
-        "move_towards_countertop_reward": move_towards_countertop_reward,
-        "place_on_countertop_reward": place_on_countertop_reward,
-        "move_away_penalty": move_away_penalty
-    }
-    
-    return total_reward, rewards_dict
-
-
-🔥 BEST (score=-1.4269999999999883)
-import numpy as np
-
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    
-    rewards_dict = {}
-    
-    # Subtask 1: Pick up Mug
-    pick_up_mug_success = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    pick_up_mug_reward = 10.0 * pick_up_mug_success
-    
-    # Subtask 2: Move Mug closer to CounterTop
-    mug_in_hand = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    mug_close_to_countertop = False
-    for obj in metadata["objects"]:
-        if obj["objectType"] == "Mug":
-            mug_close_to_countertop = any("CounterTop" in p for p in obj["receptacleObjectIds"])
-            break
-            
-    move_towards_countertop_reward = 5.0 * mug_in_hand * mug_close_to_countertop
-    
-    # Subtask 3: Place Mug on CounterTop
-    place_on_countertop_success = any("CounterTop" in p for p in obj["parentReceptacles"] for obj in metadata["objects"] if obj["objectType"] == "Mug")
-    place_on_countertop_reward = 20.0 * place_on_countertop_success
-    
-    # Negative reward for moving away from CounterTop if Mug is picked up
-    distance_to_countertop = np.inf
-    if mug_in_hand:
-        for obj in metadata["objects"]:
-            if obj["objectType"] == "Mug":
-                distance_to_countertop = min([obj["distanceToClosestObject"] for recp in metadata["objects"] if recp["objectType"] == "CounterTop"])
-                break
-                
-    move_away_penalty = -2.0 * mug_in_hand * (distance_to_countertop > 1.0)
-    
-    # Sum all rewards and penalties
-    total_reward = pick_up_mug_reward + move_towards_countertop_reward + place_on_countertop_reward + move_away_penalty
-    
-    rewards_dict = {
-        "pick_up_mug_reward": pick_up_mug_reward,
-        "move_towards_countertop_reward": move_towards_countertop_reward,
-        "place_on_countertop_reward": place_on_countertop_reward,
-        "move_away_penalty": move_away_penalty
-    }
-    
     return total_reward, rewards_dict
 
 

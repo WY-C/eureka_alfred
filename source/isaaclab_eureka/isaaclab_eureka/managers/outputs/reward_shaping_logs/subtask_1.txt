@@ -1,289 +1,41 @@
 Subtask: Pick up Mug
-Subtask label: pick_up_object,
-Category: pickupable
-<<<<<<< HEAD
+Subtask label: place_object_on_receptacle,
+Category: receptacle
 Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
 ==================================================
 
 [Iter 1]
 def _get_rewards_eureka(wrapper):
     metadata = wrapper.controller.last_event.metadata
-    target_object = wrapper.find_target_object()
+    target_object_type = wrapper.target_object_type
 
-    rewards_dict = dict()
+    target_obj = next((obj for obj in metadata["objects"] if obj["objectType"] == target_object_type), None)
 
-    # Distance Reward
-    if target_object:
-        distance = target_object["distance"]
-        distance_reward = np.exp(-0.1 * distance)  # Scale down the effect of distance
-    else:
-        distance_reward = 0.0
-    rewards_dict["distance_reward"] = distance_reward
-
-    # Visibility Reward
-    if target_object and target_object["visible"]:
-        visibility_reward = 1.0
-    else:
-        visibility_reward = 0.0
-    rewards_dict["visibility_reward"] = visibility_reward
-
-    # Pick Up Reward
-    interacted_objects = wrapper.get_interacted_objects()
-    inventory_objects = interacted_objects.get("inventory", [])
-    if any(obj["objectType"] == wrapper.target_object_type for obj in inventory_objects):
-        pick_up_reward = 10.0  # High reward for picking up the target object
-    else:
-        pick_up_reward = 0.0
-    rewards_dict["pick_up_reward"] = pick_up_reward
-
-    total_reward = distance_reward + visibility_reward + pick_up_reward
-=======
-Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-==================================================
-
-[Iter 1]
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    target = env.find_target_object()
-    
-    if target is None:
-        distance_to_target = 100.0  # Large distance if target not found
-        target_visible = 0.0
-    else:
-        distance_to_target = target["distance"]
-        target_visible = target["visible"]
-    
-    # Reward for moving closer to the target
-    distance_reward = -0.1 * distance_to_target
-    
-    # Reward for making the target visible
-    visibility_reward = 10.0 * target_visible
-    
-    # Check if the target object is in the inventory (picked up)
-    interacted_objects = env.get_interacted_objects()
-    inventory_objects = interacted_objects["inventory"]
-    pickup_success = any(obj["objectType"] == env.target_object_type for obj in inventory_objects)
-    
-    # Reward for successfully picking up the target object
-    pickup_reward = 100.0 if pickup_success else 0.0
-    
-    # Total reward is the sum of all individual rewards
-    total_reward = distance_reward + visibility_reward + pickup_reward
-    
-    # Store the individual reward components in a dictionary
-    rewards_dict = {
-        "distance_reward": distance_reward,
-        "visibility_reward": visibility_reward,
-        "pickup_reward": pickup_reward
-    }
-    
-    return total_reward, rewards_dict
-
-
-Score: 70.231323558092, SuccessRate: 0.1
-
-[Iter 2]
-def _get_rewards_eureka(wrapper):
-    metadata = wrapper.controller.last_event.metadata
-    target_type = wrapper.target_object_type
-    target_obj = wrapper.find_target_object()
-
+    # Components of the reward function
     rewards_dict = {}
 
-    # Check if target object is visible and reachable
-    if target_obj and target_obj["visible"]:
-        distance_to_target = target_obj["distance"]
-        distance_reward = np.exp(-10 * distance_to_target)  # Reward for being close to the target
-        rewards_dict["distance_reward"] = distance_reward
-    else:
-        distance_reward = 0
-        rewards_dict["distance_reward"] = distance_reward
-
-    # Check if target object is picked up
-    if any(obj["objectType"] == target_type for obj in metadata["inventoryObjects"]):
-        pickup_reward = 1.0  # Large positive reward for picking up the target
-        rewards_dict["pickup_reward"] = pickup_reward
-    else:
-        pickup_reward = 0
-        rewards_dict["pickup_reward"] = pickup_reward
-
-    # Penalty for staying idle or taking unnecessary actions
-    action_penalty = -0.01  # Small negative reward for each step taken
-    rewards_dict["action_penalty"] = action_penalty
-
-    total_reward = distance_reward + pickup_reward + action_penalty
-
-    return total_reward, rewards_dict
-
-
-[Iter 3]
-import numpy as np
-
-def _get_rewards_eureka(wrapper):
-    metadata = wrapper.controller.last_event.metadata
-    target_mug = next((obj for obj in metadata["objects"] if obj["objectType"] == wrapper.target_object_type), None)
-    
-    rewards_dict = {}
-    
-    if target_mug is None:
-        distance_to_mug = float('inf')
-        mug_visible = 0
-    else:
-        distance_to_mug = target_mug["distance"]
-        mug_visible = int(target_mug["visible"])
-    
-    # Distance to Mug Reward
-    # Negative exponential decay with distance to encourage getting closer
-    distance_reward = np.exp(-2.0 * distance_to_mug)
-    
-    # Mug Visibility Reward
-    visibility_reward = 5 * mug_visible
-    
-    # Picked Up Reward
-    picked_up_reward = 0
-    inventory_objects = metadata.get("inventoryObjects", [])
-    if any(obj["objectType"] == wrapper.target_object_type for obj in inventory_objects):
-        picked_up_reward = 20  # Large reward for picking up the Mug
-    
-    # Episode Length Penalty
-    # Penalize longer episodes
-    episode_length_penalty = -0.1
-    
-    total_reward = distance_reward + visibility_reward + picked_up_reward + episode_length_penalty
-    
-    rewards_dict = {
-        "distance_reward": distance_reward,
-        "visibility_reward": visibility_reward,
-        "picked_up_reward": picked_up_reward,
-        "episode_length_penalty": episode_length_penalty
-    }
-    
-    return total_reward, rewards_dict
-
-
-Score: 86.33965045108205, SuccessRate: 0.0
-
-[Iter 4]
-import numpy as np
-
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    rewards_dict = {}
-
-    # Distance reward component
-    target_mug = None
-    for obj in metadata["objects"]:
-        if obj["objectType"] == "Mug":
-            target_mug = obj
-            break
-
+    # Reward for getting closer to the target object
     distance_reward = 0.0
-    if target_mug is not None:
-        distance_to_mug = target_mug["distance"]
-        distance_reward = np.exp(-1.0 * distance_to_mug)  # Closer to mug -> higher reward
+    if target_obj is not None:
+        distance = target_obj["distance"]
+        distance_reward = 0.1 * (1.0 / (1.0 + distance))
     rewards_dict["distance_reward"] = distance_reward
 
-    # Pick up reward component
-    picked_up_mug = any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-    pick_up_reward = 10.0 if picked_up_mug else 0.0
-    rewards_dict["pick_up_reward"] = pick_up_reward
+    # Reward for picking up the target object
+    picked_up_reward = 0.0
+    if any(obj["objectType"] == target_object_type for obj in metadata["inventoryObjects"]):
+        picked_up_reward = 1.0
+    rewards_dict["picked_up_reward"] = picked_up_reward
+
+    # Penalty for picking up the wrong object
+    wrong_pickup_penalty = 0.0
+    if any(obj["objectType"] != target_object_type for obj in metadata["inventoryObjects"]):
+        wrong_pickup_penalty = -0.5
+    rewards_dict["wrong_pickup_penalty"] = wrong_pickup_penalty
 
     # Total reward
-    total_reward = distance_reward + pick_up_reward
+    total_reward = distance_reward + picked_up_reward + wrong_pickup_penalty
 
-    return total_reward, rewards_dict
-
-
-Score: 50.796052456809775, SuccessRate: 0.1
-
-[Iter 5]
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    target_type = env.target_object_type
-    total_reward = 0.0
-    rewards_dict = {}
-
-    # Check if the Mug is in the inventory
-    is_mug_in_inventory = any(obj["objectType"] == target_type for obj in metadata["inventoryObjects"])
-
-    # Reward for picking up the Mug
-    pick_up_reward = float(is_mug_in_inventory) * 10.0
-    total_reward += pick_up_reward
-
-    # Penalize for high episode length (optional, but can help encourage quicker solutions)
-    episode_length_penalty = -0.01 * metadata["lastActionSuccess"]
-    total_reward += episode_length_penalty
-
-    rewards_dict = {
-        "pick_up_reward": pick_up_reward,
-        "episode_length_penalty": episode_length_penalty
-    }
-
-    return total_reward, rewards_dict
-
-
-Score: -1.4269999999999883, SuccessRate: 0.1
-
-🔥 BEST (score=-1.4269999999999883)
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    target_type = env.target_object_type
-    total_reward = 0.0
-    rewards_dict = {}
-
-    # Check if the Mug is in the inventory
-    is_mug_in_inventory = any(obj["objectType"] == target_type for obj in metadata["inventoryObjects"])
-
-    # Reward for picking up the Mug
-    pick_up_reward = float(is_mug_in_inventory) * 10.0
-    total_reward += pick_up_reward
-
-    # Penalize for high episode length (optional, but can help encourage quicker solutions)
-    episode_length_penalty = -0.01 * metadata["lastActionSuccess"]
-    total_reward += episode_length_penalty
-
-    rewards_dict = {
-        "pick_up_reward": pick_up_reward,
-        "episode_length_penalty": episode_length_penalty
-    }
->>>>>>> 345a407e62d7d3d8b6f5b9041eb0881ce0545b60
-
-    return total_reward, rewards_dict
-
-
-[Iter 2]
-import numpy as np
-
-def _get_rewards_eureka(env):
-    metadata = env.controller.last_event.metadata
-    target_object_type = env.target_object_type
-    
-    rewards_dict = {}
-    
-    # Find the target object (mug) in the metadata
-    target_obj = next((obj for obj in metadata["objects"] if obj["objectType"] == target_object_type), None)
-    
-    # Check if the object is in the inventory (picked up)
-    picked_up = any(obj["objectType"] == target_object_type for obj in metadata["inventoryObjects"])
-    pick_up_object_reward = 10.0 if picked_up else 0.0
-    
-    # Progress reward based on distance to the target object
-    progress_reward = 0.0
-    if target_obj and target_obj["visible"] == 1:
-        distance_to_target = target_obj["distance"]
-        progress_reward = np.exp(-distance_to_target)  # Closer -> higher reward
-    
-    # Penalty for invalid actions
-    invalid_action_penalty = -1.0 if env.controller.last_event.metadata["lastActionSuccess"] == False else 0.0
-    
-    # Total reward calculation
-    total_reward = pick_up_object_reward + progress_reward + invalid_action_penalty
-    
-    # Populate the rewards dictionary
-    rewards_dict["pick_up_object_reward"] = pick_up_object_reward
-    rewards_dict["progress_reward"] = progress_reward
-    rewards_dict["invalid_action_penalty"] = invalid_action_penalty
-    
     return total_reward, rewards_dict
 
 

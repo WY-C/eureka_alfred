@@ -10,17 +10,11 @@ from policy_manager import PolicyManager
 
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
-NUM_SUGGESTIONS = 1  
+NUM_SUGGESTIONS = 1
 TEMPERATURE = 1.2
-<<<<<<< HEAD
 MAX_ITERATIONS = 5   
-TRAINING_STEPS = 10000
-=======
-MAX_ITERATIONS = 5
-
-#TODO
-TRAINING_STEPS = 1000
->>>>>>> 345a407e62d7d3d8b6f5b9041eb0881ce0545b60
+# TRAINING_STEPS = 1000
+TRAINING_STEPS = 70000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -319,20 +313,19 @@ def run_train_loop():
 
         last_feedback = f"Focus ONLY on subtask: {subtask}"
 
+        components_feedback = {}
+
         for i in range(MAX_ITERATIONS):               
             
             print(f"\n🔄 Iter {i+1}")
+            feedback_str = components_feedback if components_feedback else "No feedback available yet (First Iteration)."
             reward_prompt = f"""
             We are currently focusing ONLY on this specific subtask: {subtask}
 We trained a RL policy using the provided reward function code and tracked the values of the
 individual components in the reward function as well as global policy metrics such as
-success rates and episode lengths after every 20 epochs and the maximum, mean,
+success rates and episode lengths after all epochs and the maximum, mean,
 minimum values encountered:
-<<<<<<< HEAD
-=======
-#TODO 값이 제대로 안나옴
->>>>>>> 345a407e62d7d3d8b6f5b9041eb0881ce0545b60
-{task_manager.thor_env._reward_components_per_epoches}
+{feedback_str}
 
 Please carefully analyze the policy feedback and provide a new, improved reward function that can better solve the task. 
 Some helpful tips for analyzing the policy feedback:
@@ -342,11 +335,13 @@ Some helpful tips for analyzing the policy feedback:
             (a) Changing its scale or the value of its temperature parameter
             (b) Re-writing the reward component
             (c) Discarding the reward component
-    (3) If some reward components’ magnitude is significantly larger, then you must re-scale its value to a proper range
+    (3) If some reward components' magnitude is significantly larger, then you must re-scale its value to a proper range
 Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
-            print(reward_prompt)
+            # print(reward_prompt)
             # task_manager.thor_env.reset_reward_components_per_epoches()
+
+            
             response = llm.prompt(reward_prompt)
             reward_strings = response["reward_strings"]
 
@@ -366,12 +361,45 @@ Please analyze each existing reward component in the suggested manner above firs
             results = task_manager.train(reward_data)
             result = results[0]
 
+            # print(result["train_success_rate"])
+
             if not result["success"]:
                 last_feedback = f"Error: {result['exception']}"
                 continue
-
             score = result["reward_mean"]
             success_rate = result["success_rate"]
+
+            raw_components = result.get("reward_components", {})
+            
+            feedback_lines = []
+            feedback_lines.append("[Global Policy Metrics]")
+            feedback_lines.append(f"- Success Rate: {success_rate:.2f}")
+            feedback_lines.append(f"- Mean Total Reward: {score:.4f}")
+            feedback_lines.append("\n[Reward Components (Min, Mean, Max)]")
+
+            if raw_components:
+                for comp_name, values in raw_components.items():
+                    if values:
+                        # 리스트 안의 값이 어떤 타입이든 순수 파이썬 float으로 통일
+                        clean_values = [float(v) for v in values]
+                        
+                        comp_min = min(clean_values)
+                        comp_max = max(clean_values)
+                        comp_mean = sum(clean_values) / len(clean_values)
+                        
+                        # 원본 리스트의 값들도 보기 편하게 포맷팅 (소수점 4자리)
+                        raw_list_str = "[" + ", ".join([f"{v:.4f}" for v in clean_values]) + "]"
+                        
+                        feedback_lines.append(f"- {comp_name}:")
+                        feedback_lines.append(f"  * Stats: Min={comp_min:.4f}, Mean={comp_mean:.4f}, Max={comp_max:.4f}")
+                        feedback_lines.append(f"  * Raw  : {raw_list_str}")
+                    else:
+                        feedback_lines.append(f"- {comp_name}: No data")
+            else:
+                feedback_lines.append("- No component data available.")
+                
+            components_feedback = "\n".join(feedback_lines)
+
 
             with open(log_path, "a") as f:
                 f.write(f"Score: {score}, SuccessRate: {success_rate}\n\n")  
@@ -408,8 +436,9 @@ Please analyze each existing reward component in the suggested manner above firs
 
             # 🔥 여기 핵심: model 가져오기
             # best_state_dict = result["model_state_dict"]
-            if score > best_score:
-                best_score = score
+            # score아니고 success_rate로 해야함.ㄴ
+            if success_rate > best_success_rate:
+                best_success_rate = success_rate
                 best_reward_code = reward_strings[0]
 
             last_feedback += f"\nLast Score: {score}, Last Success Rate: {success_rate}\nLast Reward Function Code: \n{reward_code}"
@@ -430,7 +459,7 @@ Please analyze each existing reward component in the suggested manner above firs
         }]
 
         # 🔥 더 길게 학습 (중요)
-        task_manager._max_training_iterations = TRAINING_STEPS * 3
+        task_manager._max_training_iterations = TRAINING_STEPS * 4
 
         final_results = task_manager.train(final_reward_data)
         final_result = final_results[0]

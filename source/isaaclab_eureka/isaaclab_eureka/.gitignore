@@ -1,0 +1,9 @@
+**/__pycache__/
+*.egg-info
+logs/
+*.pt
+*.zip
+./source/isaaclab_eureka/isaaclab_eureka/managers/checkpoints
+ 
+./source/isaaclab_eureka/isaaclab_eureka/managers/policies
+./source/isaaclab_eureka/isaaclab_eureka/managers/outputs/reward_shaping_logs

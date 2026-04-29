@@ -72,6 +72,8 @@ class EurekaThorWrapper(gym.Wrapper):
 
         self._eureka_components_history = {}
         self._reward_components_per_epoches = {}
+        # self.count_try = 0
+        # self.count_success = 0
 
         self.last_obs = None
 
@@ -189,18 +191,19 @@ class EurekaThorWrapper(gym.Wrapper):
         # print(self.controller.last_event.metadata.get('inventoryObjects'))
         if self.controller.last_event.metadata.get('inventoryObjects') and self.controller.last_event.metadata.get('inventoryObjects')[0]['objectType'] == self.target_object_type:
             terminated = True
-            print('상황종료됨')
-            # print('상황종료됨')
-            # print('상황종료됨')
-        # 🔥🔥🔥 핵심 추가
+            # self.count_success += 1
+            print('subtask성공')
+
         if terminated or truncated:
-            for reward_component in reward_dict:
-                if reward_component not in self._reward_components_per_epoches:
-                    self._reward_components_per_epoches[reward_component] = []
-                self._reward_components_per_epoches[reward_component].append(
-                    sum(self._eureka_components_history.get(reward_component, [0.0]))
+            if self._get_rewards_eureka is not None:
+                for reward_component in reward_dict:
+                    if reward_component not in self._reward_components_per_epoches:
+                        self._reward_components_per_epoches[reward_component] = []
+                    
+                    self._reward_components_per_epoches[reward_component].append(
+                        sum(self._eureka_components_history.get(reward_component, [0.0]))
                 )
-            print("self._reward_components_per_epoches:", self._reward_components_per_epoches)
+            #print("self._reward_components_per_epoches:", self._reward_components_per_epoches)
             info["terminal_observation"] = normalize_obs(obs)
 
 
@@ -211,6 +214,7 @@ class EurekaThorWrapper(gym.Wrapper):
     # reset
     # -------------------------
     def reset(self, **kwargs):
+        # self.count_try += 1
         _, info = self.env.reset(**kwargs)
 
         # 🔥 에피소드 reward 초기화
@@ -291,7 +295,9 @@ class EurekaTaskManager:
         raw_env = gym.make(
                     self._env,
                     config_path=self._config_path,
-                    config_override={"max_episode_steps": 500}
+                    config_override={
+                                        "max_episode_steps": 250,
+                                     }
         )
         self.thor_env = EurekaThorWrapper(raw_env)
         
@@ -348,6 +354,11 @@ class EurekaTaskManager:
             if data == "Stop":
                 break
 
+            self.thor_env._eureka_components_history = {}
+            self.thor_env._reward_components_per_epoches = {}
+            self.thor_env.count_try = 0
+            self.thor_env.count_success = 0
+
             reward_code = data["reward_code"]
             success_code = data["success_code"]
             precondition_code = "True"
@@ -386,8 +397,15 @@ class EurekaTaskManager:
                     print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
 
                 model = PPO("MultiInputPolicy", self.thor_env, ent_coef=0.01, verbose=0, device=self._device)
-                model.learn(total_timesteps=self._max_training_iterations)
+                model.learn(total_timesteps=self._max_training_iterations, progress_bar=True)
                 model_state_dict = model.policy.state_dict()
+
+
+                # train_tries = self.thor_env.count_try
+                # train_successes = self.thor_env.count_success
+                # train_success_rate = train_successes / max(1, train_tries) # 0으로 나누기 방지
+                # print(f"[Training Phase] Success: {train_successes}/{train_tries} ({train_success_rate * 100:.2f}%)")
+
 
                 success_count = 0
                 episodes = 10
@@ -438,7 +456,11 @@ class EurekaTaskManager:
                     "success": True,
                     "reward_mean": reward_mean,
                     "success_rate": success_rate,
-                    "model_state_dict": model_state_dict
+                    "model_state_dict": model_state_dict,
+                    # "train_success_rate": train_success_rate, # 🔥 학습 도중 성공률
+                    # "train_tries": train_tries,               # 🔥 학습 도중 시도 횟수
+                    # "train_successes": train_successes,       # 🔥 학습 도중 성공 횟수
+                    "reward_components": self.thor_env._reward_components_per_epoches
                 }
 
             except Exception as e:
