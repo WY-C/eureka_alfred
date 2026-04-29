@@ -1,41 +1,6 @@
 Subtask: Pick up Mug
-Subtask label: place_object_on_receptacle,
-Category: receptacle
-Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
+Subtask label: pick_up_pickupable
+Category: pickupable
+Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
 ==================================================
-
-[Iter 1]
-def _get_rewards_eureka(wrapper):
-    metadata = wrapper.controller.last_event.metadata
-    target_object_type = wrapper.target_object_type
-
-    target_obj = next((obj for obj in metadata["objects"] if obj["objectType"] == target_object_type), None)
-
-    # Components of the reward function
-    rewards_dict = {}
-
-    # Reward for getting closer to the target object
-    distance_reward = 0.0
-    if target_obj is not None:
-        distance = target_obj["distance"]
-        distance_reward = 0.1 * (1.0 / (1.0 + distance))
-    rewards_dict["distance_reward"] = distance_reward
-
-    # Reward for picking up the target object
-    picked_up_reward = 0.0
-    if any(obj["objectType"] == target_object_type for obj in metadata["inventoryObjects"]):
-        picked_up_reward = 1.0
-    rewards_dict["picked_up_reward"] = picked_up_reward
-
-    # Penalty for picking up the wrong object
-    wrong_pickup_penalty = 0.0
-    if any(obj["objectType"] != target_object_type for obj in metadata["inventoryObjects"]):
-        wrong_pickup_penalty = -0.5
-    rewards_dict["wrong_pickup_penalty"] = wrong_pickup_penalty
-
-    # Total reward
-    total_reward = distance_reward + picked_up_reward + wrong_pickup_penalty
-
-    return total_reward, rewards_dict
-
 

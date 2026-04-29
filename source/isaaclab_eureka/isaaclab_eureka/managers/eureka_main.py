@@ -13,7 +13,7 @@ GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1
 TEMPERATURE = 1.2
 MAX_ITERATIONS = 5   
-# TRAINING_STEPS = 1000
+# TRAINING_STEPS = 100
 TRAINING_STEPS = 70000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
@@ -309,6 +309,7 @@ def run_train_loop():
         print(f'Target object: {target_object_type}')
 
         best_score = -float("inf")
+        best_success_rate = -1.0
         best_reward_code = None
 
         last_feedback = f"Focus ONLY on subtask: {subtask}"
@@ -436,8 +437,8 @@ Please analyze each existing reward component in the suggested manner above firs
 
             # 🔥 여기 핵심: model 가져오기
             # best_state_dict = result["model_state_dict"]
-            # score아니고 success_rate로 해야함.ㄴ
-            if success_rate > best_success_rate:
+            # score아니고 success_rate로 해야함.
+            if best_success_rate is None or success_rate > best_success_rate:
                 best_success_rate = success_rate
                 best_reward_code = reward_strings[0]
 
@@ -449,7 +450,7 @@ Please analyze each existing reward component in the suggested manner above firs
             f.write(f"🔥 BEST (score={score})\n")
             f.write(reward_code + "\n\n")
 
-        print(f"✅ Best Score: {best_score:.4f}")
+        print(f"✅ Best success rate: {best_success_rate:.4f}")
         print("\n🔥 Final training with BEST reward function...")
 
         final_reward_data = [{
