@@ -75,7 +75,6 @@ class EurekaThorWrapper(gym.Wrapper):
         self._reward_components_per_epoches = {}
         self.count_try = 0
         self.count_success = 0
-
         self.last_obs = None
 
     @property

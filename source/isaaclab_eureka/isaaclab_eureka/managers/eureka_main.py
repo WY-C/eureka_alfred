@@ -12,9 +12,9 @@ from policy_manager import PolicyManager
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1
 TEMPERATURE = 1.2
-MAX_ITERATIONS = 10
+MAX_ITERATIONS = 100
 # TRAINING_STEPS = 100
-TRAINING_STEPS = 70000
+TRAINING_STEPS = 700000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -392,11 +392,11 @@ Please analyze each existing reward component in the suggested manner above firs
                         comp_mean = sum(clean_values) / len(clean_values)
                         
                         # 원본 리스트의 값들도 보기 편하게 포맷팅 (소수점 4자리)
-                        raw_list_str = "[" + ", ".join([f"{v:.4f}" for v in clean_values]) + "]"
+                        #raw_list_str = "[" + ", ".join([f"{v:.4f}" for v in clean_values]) + "]"
                         
                         feedback_lines.append(f"- {comp_name}:")
                         feedback_lines.append(f"  * Stats: Min={comp_min:.4f}, Mean={comp_mean:.4f}, Max={comp_max:.4f}")
-                        feedback_lines.append(f"  * Raw  : {raw_list_str}")
+                        #feedback_lines.append(f"  * Raw  : {raw_list_str}")
                     else:
                         feedback_lines.append(f"- {comp_name}: No data")
             else:
@@ -406,7 +406,7 @@ Please analyze each existing reward component in the suggested manner above firs
 
 
             with open(log_path, "a") as f:
-                f.write(f"Score: {score}, SuccessRate: {success_rate}\n\n")  
+                f.write(f"Iteration {i+1}, TrainSuccessRate: {train_success_rate}, SuccessRate: {success_rate}\n")
 
             # 🔥 success_rate 기반 feedback
             if success_rate < 0.1:
@@ -437,7 +437,12 @@ Please analyze each existing reward component in the suggested manner above firs
                 )
 
             print(f"Score: {score}, SuccessRate: {success_rate}")
-            
+            with open(log_path, "a") as f:
+                f.write(f"Score: {score}, SuccessRate: {success_rate}\n")
+
+                # f.write(f"Last Feedback: {last_feedback}\n")
+                # f.write(f"Components Feedback: {components_feedback}\n")
+
             i += 1
 
             # 🔥 여기 핵심: model 가져오기
