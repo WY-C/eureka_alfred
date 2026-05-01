@@ -380,6 +380,9 @@ class EurekaTaskManager:
             thor_env.count_try = 0
             thor_env.count_success = 0
 
+            # 🔥 1. [추가] 새로운 학습마다 과거의 성공 상태 리스트를 비워줍니다!
+            thor_env.success_states = []
+
             reward_code = data["reward_code"]
             success_code = data["success_code"]
             precondition_code = "True"
@@ -404,7 +407,7 @@ class EurekaTaskManager:
 
                 thor_env._get_rewards_eureka = ns["_get_rewards_eureka"]
 
-                MAX_RESET_TRY = 20
+                MAX_RESET_TRY = 50
                 found = False
 
                 for _ in range(MAX_RESET_TRY):
@@ -413,7 +416,6 @@ class EurekaTaskManager:
                     current_target = getattr(thor_env.unwrapped, "target_object_type", None)
 
                     try:
-                        # 🔥 수정됨: precondition 평가 시에도 TARGET_TYPE 주입
                         if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
                             found = True
                             break
@@ -421,7 +423,6 @@ class EurekaTaskManager:
                         print(f"⚠️ precondition eval error: {e}")
                         break
 
-                # 🔥 수정됨: 전제 조건을 만족하지 못했을 때 강제 학습 진행 방지 경고
                 if not found:
                     print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
                 thor_env.count_try = 0
@@ -443,42 +444,59 @@ class EurekaTaskManager:
                 episode_rewards = []
 
                 for _ in range(episodes):
-                    if self.thor_env.success_states:
-                        for state in self.thor_env.success_states[random.randint(0, len(self.thor_env.success_states) - 1)]:
-                            if state['objectType'] == self._target_object_type:
-                                precondition = state
-                                break
+                    for _ in range(MAX_RESET_TRY):
+                        obs, _ = thor_env.reset()
+                        metadata = thor_env.unwrapped.controller.last_event.metadata
+                        current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
 
-                        self.thor_env.unwrapped.controller.step(
-                            action='SetObjectPoses',
-                            objectPoses=[
-                                {
-                                    'objectName': precondition['name'],
-                                    'rotation': {
-                                        'y': precondition['rotation']['y'],
-                                        'x': precondition['rotation']['x'],
-                                        'z': precondition['rotation']['z']
-                                    },
-                                    'position': {
-                                        'y': precondition['position']['y'],
-                                        'x': precondition['position']['x'],
-                                        'z': precondition['position']['z']
-                                    }
-                                }
-                            ]
-                        )
-                    else:
-                        for _ in range(MAX_RESET_TRY):
-                            obs, _ = self.thor_env.reset()
-                            metadata = self.thor_env.unwrapped.controller.last_event.metadata
-                            current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
-                            
-                            try:
-                                # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
-                                if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
-                                    break
-                            except:
+                        try:
+                            # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
+                            if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
                                 break
+                        except:
+                            break
+
+                    # Subtask 성공 상태에서 시작하는 로직
+                    # if thor_env.success_states:
+                    #     for state in thor_env.success_states[random.randint(0, len(thor_env.success_states) - 1)]:
+                    #         if state['objectType'] == self._target_object_type:
+                    #             precondition = state
+                    #             break
+
+                    #     thor_env.unwrapped.controller.step(
+                    #         action='SetObjectPoses',
+                    #         objectPoses=[
+                    #             {
+                    #                 'objectName': precondition['name'],
+                    #                 'rotation': {
+                    #                     'y': precondition['rotation']['y'],
+                    #                     'x': precondition['rotation']['x'],
+                    #                     'z': precondition['rotation']['z']
+                    #                 },
+                    #                 'position': {
+                    #                     'y': precondition['position']['y'],
+                    #                     'x': precondition['position']['x'],
+                    #                     'z': precondition['position']['z']
+                    #                 }
+                    #             }
+                    #         ]
+                    #     )
+                    #     target = thor_env.find_target_object()
+                    #     obs = thor_env.build_observation(target)
+                    #     obs = normalize_obs(obs)
+
+                    # else:
+                    #     for _ in range(MAX_RESET_TRY):
+                    #         obs, _ = thor_env.reset()
+                    #         metadata = thor_env.unwrapped.controller.last_event.metadata
+                    #         current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+
+                    #         try:
+                    #             # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
+                    #             if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                    #                 break
+                    #         except:
+                    #             break
 
                     done = False
                     while not done:
@@ -494,6 +512,7 @@ class EurekaTaskManager:
                             if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
                                 success_count += 1
                                 print(f'success count increased: {success_count}')
+                                thor_env.success_states.append(metadata['objects'])
                                 break
                         except Exception as e:
                             print(f"⚠️ success eval error: {e}")

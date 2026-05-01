@@ -355,32 +355,40 @@ Please analyze each existing reward component in the suggested manner above firs
             reward_strings = response["reward_strings"]
 
             reward_data = []
-
             for reward_code in reward_strings:
                 reward_data.append({
                     "reward_code": reward_code,
                     "success_code": success_code,
                     "precondition_code": s["pre"]
                 })
-                with open(log_path, "a") as f:
-                    f.write(f"[Iter {i+1}]\n")
-                    f.write(reward_code + "\n\n")
+
             results = task_manager.train(reward_data)
 
             successful_results = [r for r in results if r.get("success", False)]
+            
+            with open(log_path, "a") as f:
+                f.write(f"--- [Iter {i+1} All Candidate Results] ---\n")
+                for r_idx, r in enumerate(successful_results):
+                    c_code = r.get("reward_code", "")
+                    c_train_sr = r.get("train_success_rate", 0)
+                    c_eval_sr = r.get("success_rate", 0)
+                    c_mean = r.get("reward_mean", 0)
+                    
+                    f.write(f"--- Candidate {r_idx+1} ---\n")
+                    f.write(f"{c_code}\n")
+                    f.write(f"> Train SR: {c_train_sr:.4f} | Eval SR: {c_eval_sr:.4f} | Mean Reward: {c_mean:.4f}\n\n")
 
+
+        
             if not successful_results:
                 last_feedback = "All reward suggestions failed to execute. Please check the syntax and environment API."
                 continue
-            best_iter_result = max(successful_results, key=lambda x: x["reward_mean"])
+            best_iter_result = max(successful_results, key=lambda x: x["train_success_rate"])
             score = best_iter_result["reward_mean"]
             success_rate = best_iter_result["success_rate"]
             train_success_rate = best_iter_result["train_success_rate"]
             reward_code = best_iter_result["reward_code"]
-            with open(log_path, "a") as f:
-                f.write(f"[Iter {i+1}]\n")
-                f.write(reward_code + "\n\n")
-                f.write(f"Train Success Rate: {train_success_rate:.4f}\n")
+
             print(f"Training Success Rate: {train_success_rate:.4f}")
 
             raw_components = best_iter_result.get("reward_components", {})
