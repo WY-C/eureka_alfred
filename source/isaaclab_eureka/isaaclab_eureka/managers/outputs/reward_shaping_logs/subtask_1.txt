@@ -1,6 +1,6 @@
 Subtask: Pick up Mug
-Subtask label: pick_up_pickupable,
-Category: pickupable
+Subtask label: place_object_on_receptacle,
+Category: moveable
 Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
 ==================================================
 

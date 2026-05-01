@@ -7,14 +7,14 @@ import inspect
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager, EurekaThorWrapper
 from policy_manager import PolicyManager
-
+from datetime import datetime
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
-NUM_SUGGESTIONS = 1
+NUM_SUGGESTIONS = 3
 TEMPERATURE = 1.2
-MAX_ITERATIONS = 100
+MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
-TRAINING_STEPS = 700000
+TRAINING_STEPS = 20000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -283,8 +283,8 @@ def run_train_loop():
         success_code = s["success"]
 
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
-
-        log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}.txt"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}_{timestamp}.txt"
 
         # 🔥 LLM으로 policy label 생성
         subtask_info = generate_policy_label_and_category(llm, subtask) # {'label': ..., 'category': ...}
@@ -339,6 +339,8 @@ Some helpful tips for analyzing the policy feedback:
             (b) Re-writing the reward component
             (c) Discarding the reward component
     (3) If some reward components' magnitude is significantly larger, then you must re-scale its value to a proper range
+    (4) PREVENT REWARD HACKING: Ensure that continuous rewards (like distance or approach rewards) are strictly bounded (e.g., using `torch.exp` or capping). No single reward component should grow infinitely.
+    (5) STEP PENALTY: Add a small negative step penalty (e.g., -0.01 per step) to encourage the agent to finish the task quickly and prevent it from milking positive rewards without completing the task.
 Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
             # print(reward_prompt)
@@ -470,7 +472,7 @@ Please analyze each existing reward component in the suggested manner above firs
         }]
 
         # 🔥 더 길게 학습 (중요)
-        task_manager._max_training_iterations = TRAINING_STEPS * 4
+        task_manager._max_training_iterations = TRAINING_STEPS * 10
 
         final_results = task_manager.train(final_reward_data)
         final_result = final_results[0]
