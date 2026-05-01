@@ -14,7 +14,7 @@ NUM_SUGGESTIONS = 3
 TEMPERATURE = 1.0
 MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
-TRAINING_STEPS = 1000
+TRAINING_STEPS = 50000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -380,6 +380,7 @@ Please analyze each existing reward component in the suggested manner above firs
             with open(log_path, "a") as f:
                 f.write(f"[Iter {i+1}]\n")
                 f.write(reward_code + "\n\n")
+                f.write(f"Train Success Rate: {train_success_rate:.4f}\n")
             print(f"Training Success Rate: {train_success_rate:.4f}")
 
             raw_components = best_iter_result.get("reward_components", {})
