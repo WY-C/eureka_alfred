@@ -12,9 +12,9 @@ from policy_manager import PolicyManager
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 1
 TEMPERATURE = 1.2
-MAX_ITERATIONS = 100
+MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
-TRAINING_STEPS = 700000
+TRAINING_STEPS = 20000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -316,7 +316,6 @@ def run_train_loop():
         last_feedback = ""
         i = 0
         while i < MAX_ITERATIONS:
-
             print(f"\n🔄 Iter {i+1}")
             reward_components_feedback = components_feedback if components_feedback else "No feedback available yet (First Iteration)."
             reward_prompt = f"""

@@ -77,6 +77,8 @@ class EurekaThorWrapper(gym.Wrapper):
         self.count_success = 0
         self.last_obs = None
 
+        self.success_states = []
+
     @property
     def controller(self):
         return self.env.unwrapped.controller
@@ -125,9 +127,10 @@ class EurekaThorWrapper(gym.Wrapper):
     # 🔥 observation 생성
     # -------------------------
     def build_observation(self, target):
+        frame = self.controller.last_event.frame
         if target is None:
             obs = {
-                "env_obs": np.zeros((300,300,3), dtype=np.uint8),
+                "env_obs": frame,
                 "center_x": np.array([0.0], dtype=np.float32),
                 "center_y": np.array([0.0], dtype=np.float32),
                 "center_z": np.array([0.0], dtype=np.float32),
@@ -142,7 +145,7 @@ class EurekaThorWrapper(gym.Wrapper):
         center = target["axisAlignedBoundingBox"]["center"]
 
         obs = {
-            "env_obs": np.zeros((300,300,3), dtype=np.uint8),
+            "env_obs": frame,
 
             "center_x": np.array([center["x"]], dtype=np.float32),
             "center_y": np.array([center["y"]], dtype=np.float32),
@@ -174,9 +177,6 @@ class EurekaThorWrapper(gym.Wrapper):
 
         self.last_obs = obs
 
-
-        
-
         # 🔥 reward shaping
         if self._get_rewards_eureka is not None:
             #print(self._get_rewards_eureka(self))
@@ -192,7 +192,9 @@ class EurekaThorWrapper(gym.Wrapper):
         if self.controller.last_event.metadata.get('inventoryObjects') and self.controller.last_event.metadata.get('inventoryObjects')[0]['objectType'] == self.target_object_type:
             terminated = True
             self.count_success += 1
-            #print('subtask성공')
+            print('subtask성공')
+            self.success_states.append(self.controller.last_event.metadata['objects'])
+            # print(f'success_states added: {self.success_states[-1]}')
 
         if terminated or truncated:
             if self._get_rewards_eureka is not None:
@@ -420,17 +422,42 @@ class EurekaTaskManager:
                 episode_rewards = []
 
                 for _ in range(episodes):
-                    for _ in range(MAX_RESET_TRY):
-                        obs, _ = self.thor_env.reset()
-                        metadata = self.thor_env.unwrapped.controller.last_event.metadata
-                        current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
-                        
-                        try:
-                            # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
-                            if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                    if self.thor_env.success_states:
+                        for state in self.thor_env.success_states[random.randint(0, len(self.thor_env.success_states) - 1)]:
+                            if state['objectType'] == self._target_object_type:
+                                precondition = state
                                 break
-                        except:
-                            break
+
+                        self.thor_env.unwrapped.controller.step(
+                            action='SetObjectPoses',
+                            objectPoses=[
+                                {
+                                    'objectName': precondition['name'],
+                                    'rotation': {
+                                        'y': precondition['rotation']['y'],
+                                        'x': precondition['rotation']['x'],
+                                        'z': precondition['rotation']['z']
+                                    },
+                                    'position': {
+                                        'y': precondition['position']['y'],
+                                        'x': precondition['position']['x'],
+                                        'z': precondition['position']['z']
+                                    }
+                                }
+                            ]
+                        )
+                    else:
+                        for _ in range(MAX_RESET_TRY):
+                            obs, _ = self.thor_env.reset()
+                            metadata = self.thor_env.unwrapped.controller.last_event.metadata
+                            current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+                            
+                            try:
+                                # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
+                                if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                                    break
+                            except:
+                                break
 
                     done = False
                     while not done:
