@@ -7,14 +7,14 @@ import inspect
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager, EurekaThorWrapper
 from policy_manager import PolicyManager
-
+from datetime import datetime
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
-NUM_SUGGESTIONS = 1
-TEMPERATURE = 1.2
+NUM_SUGGESTIONS = 3
+TEMPERATURE = 1.0
 MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
-TRAINING_STEPS = 20000
+TRAINING_STEPS = 1000
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -27,7 +27,7 @@ The environment source code is:
 {inspect.getsource(EurekaThorWrapper)}
 
 As an example, the reward function signature can be:
-def _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor):
+def _get_rewards_eureka(env):
     rewards_dict = dict()
     ...
     return total_reward, rewards_dict
@@ -36,7 +36,9 @@ def _get_rewards_eureka(object_pos: torch.Tensor, goal_pos: torch.Tensor):
 You have to write that reward components is the key and its reward value is the value of the rewards_dict. 
 
 Below is one example of the reward function:
-def _get_rewards_eureka(object_rot: torch.Tensor, goal_rot: torch.Tensor):
+def _get_rewards_eureka(env):
+    object_rot = env.controller.last_event.metadata["objects"][0]["rotation"]
+    goal_rot = env.controller.last_event.metadata["goal"]["rotation"]
     rot_diff = torch.abs(torch.sum(object_rot * goal_rot, dim=1) - 1) / 2
     rotation_reward = torch.exp(-20 * rot_diff)
 
@@ -281,10 +283,11 @@ def run_train_loop():
     for s_idx, s in enumerate(subtasks):
         subtask = s["subtask"]
         success_code = s["success"]
+        pre_code = s["pre"]
 
         print(f"\n🚀 [Subtask {s_idx+1}] {subtask}")
-
-        log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}.txt"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = f"outputs/reward_shaping_logs/subtask_{s_idx+1}_{timestamp}.txt"
 
         # 🔥 LLM으로 policy label 생성
         subtask_info = generate_policy_label_and_category(llm, subtask) # {'label': ..., 'category': ...}
@@ -317,6 +320,7 @@ def run_train_loop():
         i = 0
         while i < MAX_ITERATIONS:
             print(f"\n🔄 Iter {i+1}")
+            
             reward_components_feedback = components_feedback if components_feedback else "No feedback available yet (First Iteration)."
             reward_prompt = f"""
             We are currently focusing ONLY on this specific subtask: {subtask}
@@ -338,6 +342,8 @@ Some helpful tips for analyzing the policy feedback:
             (b) Re-writing the reward component
             (c) Discarding the reward component
     (3) If some reward components' magnitude is significantly larger, then you must re-scale its value to a proper range
+    (4) PREVENT REWARD HACKING: Ensure that continuous rewards (like distance or approach rewards) are strictly bounded (e.g., using `torch.exp` or capping). No single reward component should grow infinitely.
+    (5) STEP PENALTY: Add a small negative step penalty (e.g., -0.01 per step) to encourage the agent to finish the task quickly and prevent it from milking positive rewards without completing the task.
 Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
             # print(reward_prompt)
@@ -345,34 +351,38 @@ Please analyze each existing reward component in the suggested manner above firs
 
             
             response = llm.prompt(reward_prompt)
+            #print("response:", response)
             reward_strings = response["reward_strings"]
 
-            reward_code = reward_strings[0]
+            reward_data = []
 
-            # 🔥 로그 저장
+            for reward_code in reward_strings:
+                reward_data.append({
+                    "reward_code": reward_code,
+                    "success_code": success_code,
+                    "precondition_code": s["pre"]
+                })
+                with open(log_path, "a") as f:
+                    f.write(f"[Iter {i+1}]\n")
+                    f.write(reward_code + "\n\n")
+            results = task_manager.train(reward_data)
+
+            successful_results = [r for r in results if r.get("success", False)]
+
+            if not successful_results:
+                last_feedback = "All reward suggestions failed to execute. Please check the syntax and environment API."
+                continue
+            best_iter_result = max(successful_results, key=lambda x: x["reward_mean"])
+            score = best_iter_result["reward_mean"]
+            success_rate = best_iter_result["success_rate"]
+            train_success_rate = best_iter_result["train_success_rate"]
+            reward_code = best_iter_result["reward_code"]
             with open(log_path, "a") as f:
                 f.write(f"[Iter {i+1}]\n")
                 f.write(reward_code + "\n\n")
-
-            reward_data = [{
-                "reward_code": reward_strings[0],
-                "success_code": success_code,
-                "precondition_code": s["pre"]
-            }]
-
-            results = task_manager.train(reward_data)
-            result = results[0]
-
-
-            if not result["success"]:
-                last_feedback = f"Error: {result['exception']}"
-                continue
-            score = result["reward_mean"]
-            success_rate = result["success_rate"]
-            train_success_rate = result["train_success_rate"]
             print(f"Training Success Rate: {train_success_rate:.4f}")
 
-            raw_components = result.get("reward_components", {})
+            raw_components = best_iter_result.get("reward_components", {})
             
             feedback_lines = []
             feedback_lines.append("[Global Policy Metrics]")
@@ -449,7 +459,7 @@ Please analyze each existing reward component in the suggested manner above firs
             # score아니고 success_rate로 해야함.
             if best_success_rate is None or success_rate > best_success_rate:
                 best_success_rate = success_rate
-                best_reward_code = reward_strings[0]
+                best_reward_code = reward_code
 
             last_feedback += f"\nLast Score: {score}, Last Success Rate: {success_rate}\nLast Reward Function Code: \n{reward_code}"
             # print(last_feedback)
@@ -469,7 +479,7 @@ Please analyze each existing reward component in the suggested manner above firs
         }]
 
         # 🔥 더 길게 학습 (중요)
-        task_manager._max_training_iterations = TRAINING_STEPS * 4
+        task_manager._max_training_iterations = TRAINING_STEPS * 10
 
         final_results = task_manager.train(final_reward_data)
         final_result = final_results[0]

@@ -24,22 +24,23 @@ AVAILABLE_OBJECT_TYPES = ["Unknown", "Apple", "Bowl", "Bread", "ButterKnife", "C
 OBJECT_TO_ID = {obj: i for i, obj in enumerate(AVAILABLE_OBJECT_TYPES)}
 
 def normalize_obs(obs):
+    """관측치 딕셔너리의 타입을 안정화하고 shape을 맞춤"""
     for k, v in obs.items():
         if k == "env_obs":
+            # 시각 정보는 uint8 유지가 일반적 (SB3 내부에서 스케일링 가능)
+            obs[k] = v.astype(np.uint8)
             continue
 
-        # scalar → (1,)
+        # 스칼라 혹은 빈 shape 방지 -> (1,)
         if np.isscalar(v):
             obs[k] = np.array([v], dtype=np.float32)
-
-        # () → (1,)
-        elif isinstance(v, np.ndarray) and v.shape == ():
-            obs[k] = v.reshape(1).astype(np.float32)
-
-        # dtype 통일
         elif isinstance(v, np.ndarray):
-            obs[k] = v.astype(np.float32)
-
+            if v.shape == ():
+                obs[k] = v.reshape(1).astype(np.float32)
+            else:
+                obs[k] = v.astype(np.float32)
+        else:
+            obs[k] = np.array([v], dtype=np.float32)
     return obs
 
 # -------------------------
@@ -294,6 +295,20 @@ class EurekaTaskManager:
         self._max_training_iterations = max_training_iterations
         self._config_path = config_path or os.path.expanduser("~/Documents/rl_thor/config/environment_config.yaml")
 
+
+        temp_env = gym.make(self._env, config_path=self._config_path, config_override={"max_episode_steps": 250})
+        temp_wrapper = EurekaThorWrapper(temp_env)
+        temp_wrapper.reset()
+        
+        proper_objects = []
+        for obj in temp_wrapper.unwrapped.controller.last_event.metadata['objects']:
+            if category == 'navigate': proper_objects.append(obj['objectType'])
+            elif obj.get(category) and obj['objectType'] in AVAILABLE_OBJECT_TYPES: proper_objects.append(obj['objectType'])
+        
+        # self._target_object_type = proper_objects[random.randint(0, max(0, len(proper_objects)-1))] if proper_objects else 'Mug'
+        # self._target_object_type = 'Mug' # 🔥 일단 고정 (나중에 랜덤으로 바꿀 수 있음)
+        temp_wrapper.close() # 임시 환경 종료
+
         raw_env = gym.make(
                     self._env,
                     config_path=self._config_path,
@@ -351,19 +366,25 @@ class EurekaTaskManager:
         self.thor_env.unwrapped.target_object_type = target_object_type
         
     def _worker(self, idx, queue):
+        raw_env = gym.make(self._env, config_path=self._config_path, config_override={"max_episode_steps": 250})
+        thor_env = EurekaThorWrapper(raw_env)
+        thor_env.unwrapped.target_object_type = self._target_object_type
+
         while not self.termination_event.is_set():
             data = queue.get()
             if data == "Stop":
                 break
 
-            self.thor_env._eureka_components_history = {}
-            self.thor_env._reward_components_per_epoches = {}
-            self.thor_env.count_try = 0
-            self.thor_env.count_success = 0
+            thor_env._eureka_components_history = {}
+            thor_env._reward_components_per_epoches = {}
+            thor_env.count_try = 0
+            thor_env.count_success = 0
 
             reward_code = data["reward_code"]
             success_code = data["success_code"]
             precondition_code = "True"
+
+            training_steps = data.get("training_steps", self._max_training_iterations)
 
             try:
                 
@@ -381,19 +402,19 @@ class EurekaTaskManager:
                 if "_get_rewards_eureka" not in ns:
                     raise ValueError("LLM did not define _get_rewards_eureka")
 
-                self.thor_env._get_rewards_eureka = ns["_get_rewards_eureka"]
+                thor_env._get_rewards_eureka = ns["_get_rewards_eureka"]
 
                 MAX_RESET_TRY = 20
                 found = False
 
                 for _ in range(MAX_RESET_TRY):
-                    obs, _ = self.thor_env.reset()
-                    metadata = self.thor_env.unwrapped.controller.last_event.metadata
-                    current_target = getattr(self.thor_env.unwrapped, "target_object_type", None)
-                    
+                    obs, _ = thor_env.reset()
+                    metadata = thor_env.unwrapped.controller.last_event.metadata
+                    current_target = getattr(thor_env.unwrapped, "target_object_type", None)
+
                     try:
                         # 🔥 수정됨: precondition 평가 시에도 TARGET_TYPE 주입
-                        if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": self.thor_env}):
+                        if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
                             found = True
                             break
                     except Exception as e:
@@ -403,15 +424,15 @@ class EurekaTaskManager:
                 # 🔥 수정됨: 전제 조건을 만족하지 못했을 때 강제 학습 진행 방지 경고
                 if not found:
                     print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
-                self.thor_env.count_try = 0
-                self.thor_env.count_success = 0
-                model = PPO("MultiInputPolicy", self.thor_env, ent_coef=0.01, verbose=0, device=self._device)
-                model.learn(total_timesteps=self._max_training_iterations, progress_bar=True)
+                thor_env.count_try = 0
+                thor_env.count_success = 0
+                model = PPO("MultiInputPolicy", thor_env, ent_coef=0.01, verbose=0, device=self._device)
+                model.learn(total_timesteps=training_steps, progress_bar=True)
                 model_state_dict = model.policy.state_dict()
 
 
-                train_tries = self.thor_env.count_try
-                train_successes = self.thor_env.count_success
+                train_tries = thor_env.count_try
+                train_successes = thor_env.count_success
                 train_success_rate = train_successes / max(1, train_tries) # 0으로 나누기 방지
                 print(f"[Training Phase] Success: {train_successes}/{train_tries} ({train_success_rate * 100:.2f}%)")
 
@@ -463,14 +484,14 @@ class EurekaTaskManager:
                     while not done:
                         action, _ = model.predict(obs)
                         #print(f'action: {action}')
-                        obs, _, terminated, truncated, _ = self.thor_env.step(action)
+                        obs, _, terminated, truncated, _ = thor_env.step(action)
                         done = terminated or truncated
 
-                        metadata = self.thor_env.unwrapped.controller.last_event.metadata
-                        current_target = getattr(self.thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+                        metadata = thor_env.unwrapped.controller.last_event.metadata
+                        current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
 
                         try:
-                            if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": self.thor_env}):
+                            if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
                                 success_count += 1
                                 print(f'success count increased: {success_count}')
                                 break
@@ -478,7 +499,7 @@ class EurekaTaskManager:
                             print(f"⚠️ success eval error: {e}")
                             break
                     episode_rewards.append(
-                        self.thor_env._eureka_episode_sums["eureka_total_rewards"]
+                        thor_env._eureka_episode_sums["eureka_total_rewards"]
                     )
 
                 print(f'final success count: {success_count}')
@@ -494,7 +515,8 @@ class EurekaTaskManager:
                     "train_success_rate": train_success_rate, # 🔥 학습 도중 성공률
                     "train_tries": train_tries,               # 🔥 학습 도중 시도 횟수
                     "train_successes": train_successes,       # 🔥 학습 도중 성공 횟수
-                    "reward_components": self.thor_env._reward_components_per_epoches
+                    "reward_components": thor_env._reward_components_per_epoches,
+                    "reward_code": reward_code
                 }
 
             except Exception as e:
