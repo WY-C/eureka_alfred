@@ -1,6 +1,0 @@
-Subtask: Pick up Mug
-Subtask label: place_object_on_receptacle,
-Category: receptacle
-Success code: any(obj["objectType"] == "Mug" for obj in metadata["inventoryObjects"])
-==================================================
-

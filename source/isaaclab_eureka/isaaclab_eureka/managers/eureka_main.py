@@ -10,7 +10,7 @@ from policy_manager import PolicyManager
 from datetime import datetime
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
-NUM_SUGGESTIONS = 3
+NUM_SUGGESTIONS = 5
 TEMPERATURE = 1.0
 MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
@@ -364,20 +364,24 @@ Please analyze each existing reward component in the suggested manner above firs
 
             results = task_manager.train(reward_data)
 
-            successful_results = [r for r in results if r.get("success", False)]
             
             with open(log_path, "a") as f:
-                f.write(f"--- [Iter {i+1} All Candidate Results] ---\n")
-                for r_idx, r in enumerate(successful_results):
-                    c_code = r.get("reward_code", "")
-                    c_train_sr = r.get("train_success_rate", 0)
-                    c_eval_sr = r.get("success_rate", 0)
-                    c_mean = r.get("reward_mean", 0)
-                    
+                f.write(f"\n--- [Iter {i+1} All Candidate Results] ---\n")
+                for r_idx, r in enumerate(results): # successful_results 대신 전체 results 순회
                     f.write(f"--- Candidate {r_idx+1} ---\n")
-                    f.write(f"{c_code}\n")
-                    f.write(f"> Train SR: {c_train_sr:.4f} | Eval SR: {c_eval_sr:.4f} | Mean Reward: {c_mean:.4f}\n\n")
+                    if r.get("success", False):
+                        c_code = r.get("reward_code", "")
+                        c_train_sr = r.get("train_success_rate", 0)
+                        c_eval_sr = r.get("success_rate", 0)
+                        c_mean = r.get("reward_mean", 0)
+                        f.write(f"{c_code}\n")
+                        f.write(f"> [SUCCESS] Train SR: {c_train_sr:.4f} | Eval SR: {c_eval_sr:.4f} | Mean Reward: {c_mean:.4f}\n\n")
+                    else:
+                        # 🔥 실패한 경우 에러 메시지를 로그에 남깁니다.
+                        f.write(f"> [FAILED] Exception: {r.get('exception', 'Unknown error')}\n\n")
 
+            # 이후 로직은 동일하게 successful_results로 진행
+            successful_results = [r for r in results if r.get("success", False)]
 
         
             if not successful_results:
