@@ -550,3 +550,202 @@ class EurekaTaskManager:
             q.put("Stop")
         for p in self._processes.values():
             p.join(timeout=2)
+
+import traceback
+from stable_baselines3.common.env_checker import check_env
+from llmsf.env import GridWorld
+
+
+class GridTaskManager:
+    def __init__(
+        self,
+        num_envs=1,
+        device="cpu",
+        max_training_steps=50000,
+        max_episode_steps=200
+    ):
+        self.num_envs = num_envs
+        self.device = device
+        self.max_training_steps = max_training_steps
+        self.max_episode_steps = max_episode_steps
+
+    # -------------------------------
+    # ✅ Env 생성
+    # -------------------------------
+    def _build_env(self):
+        env = GridWorld()
+        return env
+
+    # -------------------------------
+    # ✅ Reward 함수 주입
+    # -------------------------------
+    def _inject_reward(self, env, reward_code):
+        ns = {
+            "np": np,
+            "torch": torch,
+        }
+
+        exec(reward_code, ns)
+
+        if "_get_rewards_eureka" not in ns:
+            raise ValueError("Reward function not defined")
+
+        env._get_rewards_eureka = ns["_get_rewards_eureka"]
+
+    # -------------------------------
+    # ✅ Success 정의 (skill별)
+    # -------------------------------
+    def _check_success(self, env, skill):
+        # 모든 UAV가 목표 도달
+        if skill == "fast_move":
+            return all(uav.finished for uav in env.uavs)
+
+        # 안전하게 도착 (enemy 근접 없음)
+        elif skill == "safe_move":
+            for uav in env.uavs:
+                if not uav.finished:
+                    return False
+                for enemy in env.enemies:
+                    if abs(uav.location[0] - enemy.location[0]) + abs(uav.location[1] - enemy.location[1]) <= 1:
+                        return False
+            return True
+
+        # lure: 적이 특정 UAV 쪽으로 몰림
+        elif skill == "lure":
+            center_uav = env.uavs[0]
+            others = env.uavs[1:]
+
+            enemy_dist_center = np.mean([
+                abs(enemy.location[0] - center_uav.location[0]) +
+                abs(enemy.location[1] - center_uav.location[1])
+                for enemy in env.enemies
+            ])
+
+            enemy_dist_others = np.mean([
+                min(
+                    abs(enemy.location[0] - u.location[0]) +
+                    abs(enemy.location[1] - u.location[1])
+                    for u in others
+                )
+                for enemy in env.enemies
+            ])
+
+            return enemy_dist_center < enemy_dist_others
+
+        return False
+
+    # -------------------------------
+    # ✅ 단일 reward 학습
+    # -------------------------------
+    def _train_single(self, reward_code, skill):
+
+        try:
+            env = self._build_env()
+
+            # reward 주입
+            self._inject_reward(env, reward_code)
+
+            # SB3 wrapper 필요하면 여기 추가 가능
+            model = PPO("MlpPolicy", env, verbose=0, device=self.device)
+
+            model.learn(total_timesteps=self.max_training_steps)
+
+            # -------------------
+            # Evaluation
+            # -------------------
+            success_count = 0
+            episodes = 10
+            rewards = []
+
+            for _ in range(episodes):
+                env = self._build_env()
+                self._inject_reward(env, reward_code)
+
+                done = False
+                total_reward = 0
+                step = 0
+
+                while not done and step < self.max_episode_steps:
+                    obs = self._get_obs(env)
+
+                    action, _ = model.predict(obs)
+
+                    self._step_env(env, action)
+
+                    r, _ = env._get_rewards_eureka(env)
+                    total_reward += float(r)
+
+                    if self._check_success(env, skill):
+                        success_count += 1
+                        break
+
+                    step += 1
+
+                rewards.append(total_reward)
+
+            result = {
+                "success": True,
+                "success_rate": success_count / episodes,
+                "reward_mean": np.mean(rewards),
+                "reward_code": reward_code,
+                "model": model
+            }
+
+        except Exception as e:
+            print(traceback.format_exc())
+            result = {
+                "success": False,
+                "exception": str(e)
+            }
+
+        return result
+
+    # -------------------------------
+    # ✅ env step (너 환경에 맞게 수정)
+    # -------------------------------
+    def _step_env(self, env, action):
+        """
+        action을 env에 적용하는 함수
+        👉 너 action space 맞게 수정해야 함
+        """
+
+        # 예시 (랜덤 이동 구조면)
+        for i, uav in enumerate(env.uavs):
+            if i in action:
+                env.uavs[i].move(action[i])
+
+        env.set_uav()
+        env.set_enemy()
+
+    # -------------------------------
+    # ✅ observation 정의
+    # -------------------------------
+    def _get_obs(self, env):
+        obs = []
+
+        for uav in env.uavs:
+            obs.extend(uav.location)
+            obs.append(uav.battery)
+
+        for enemy in env.enemies:
+            obs.extend(enemy.location)
+
+        obs.extend(env.start)
+        obs.extend(env.end)
+
+        return np.array(obs, dtype=np.float32)
+
+    # -------------------------------
+    # ✅ 여러 reward 후보 학습
+    # -------------------------------
+    def train(self, reward_data_list, skill):
+
+        results = []
+
+        for data in reward_data_list:
+            reward_code = data["reward_code"]
+
+            result = self._train_single(reward_code, skill)
+            results.append(result)
+
+        return results
