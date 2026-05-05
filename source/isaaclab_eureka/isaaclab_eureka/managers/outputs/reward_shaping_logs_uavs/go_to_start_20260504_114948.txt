@@ -1,0 +1,4 @@
+Task: 3 UAVs must visit start and then reach end as fast as possible
+Skill name: go_to_start
+==================================================
+
