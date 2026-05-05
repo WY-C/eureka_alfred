@@ -11,6 +11,9 @@ from typing import Literal, Tuple, Dict
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 try:
     import rl_thor
