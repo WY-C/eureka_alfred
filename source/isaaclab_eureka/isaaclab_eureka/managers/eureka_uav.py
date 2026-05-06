@@ -6,9 +6,15 @@ import inspect
 
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager, EurekaThorWrapper
-from llmsf.env import GridWorld
+from llmsf.env_rl import GridWorldMultiAgentEnv
 from policy_manager import PolicyManager
 from datetime import datetime
+
+import ray
+from ray.rllib.algorithms.ppo import PPOConfig
+
+ray.init()
+
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 5
@@ -26,7 +32,7 @@ Your reward function should use useful variables from the environment as inputs.
 
 The environment is a GridWorld with multiple UAVs.
 The environment source code is:
-{inspect.getsource(GridWorld)}
+{inspect.getsource(GridWorldMultiAgentEnv)}
 
 There are several enemies which UAVs have to avoid.
 
@@ -78,7 +84,7 @@ Your job is to design reusable SKILLS for a multi-agent reinforcement learning s
 
 --------------------------------------------------
 ENVIRONMENT CODE:
-{inspect.getsource(GridWorld)}
+{inspect.getsource(GridWorldMultiAgentEnv)}
 
 --------------------------------------------------
 TASK:
@@ -180,6 +186,17 @@ def validate_skills(skills):
 
     return validated
 
+def parse_rewards_for_config(llm_outputs):
+    parsed_rewards = []
+    
+    for output in llm_outputs:
+        if 'reward_code' in output:
+            # LLM 출력 문자열에 포함된 Non-breaking space(\xa0)를 일반 공백으로 치환
+            clean_code = output['reward_code'].replace('\xa0', ' ')
+            parsed_rewards.append(clean_code)
+            
+    return parsed_rewards
+
 def run_train_loop():
     llm = LLMManager(
         gpt_model=GPT_MODEL,
@@ -212,11 +229,11 @@ def run_train_loop():
             f.write(f"Skill name: {skill_name}\n")
             f.write("="*50 + "\n\n")
 
-        task_manager = EurekaTaskManager(
-            num_processes=NUM_SUGGESTIONS,
-            max_training_iterations=TRAINING_STEPS,
-            category='navigate'
-        )
+        # task_manager = EurekaTaskManager(
+        #     num_processes=NUM_SUGGESTIONS,
+        #     max_training_iterations=TRAINING_STEPS,
+        #     category='navigate'
+        # )
         best_reward_code = None
         best_success_rate = -1
 
@@ -236,14 +253,12 @@ Environment:
 - Enemies exist (avoid them)
 
 IMPORTANT:
-- Use env.uavs[i].location
-- Use env.enemies[j].location
-- Use Manhattan distance
+- Input parameter must be uav, enemy_locs
 - Add step penalty
 
 Return:
 
-def _get_rewards_eureka(env):
+def _get_rewards_eureka(uav, enemy_locs):
     ...
 """
             # print(reward_prompt)
@@ -253,8 +268,37 @@ def _get_rewards_eureka(env):
             #print("response:", response)
             reward_strings = response["reward_strings"]
             reward_data = [{"reward_code": r} for r in reward_strings]
+            print(reward_data)
+            print()
 
-            results = task_manager.train(reward_data)
+            config = (
+            PPOConfig()
+            .environment(
+                env=GridWorldMultiAgentEnv,
+                env_config={
+                    'reward_function': parse_rewards_for_config(reward_data)
+                    }
+                )
+                .api_stack(
+                    enable_rl_module_and_learner=False,
+                    enable_env_runner_and_connector_v2=False
+                )
+                .framework("torch")
+                .env_runners(num_env_runners=2)
+                .training(
+                    train_batch_size=1000,
+                    gamma=0.99,
+                    lr=5e-4
+                )
+                .multi_agent(
+                    policies={"shared_policy"},
+                    policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
+                )
+            )
+
+            algo = config.build()
+
+            results = algo.train()
 
             successful = [r for r in results if r.get("success", False)]
 
