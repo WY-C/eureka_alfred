@@ -23,47 +23,56 @@ MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
 TRAINING_STEPS = 50000
 
-TASK_DESCRIPTION = "3 UAVs must visit start and then reach end as fast as possible"
+ENEMY_NUM = 3
+FOLLOW = True
+AREA = 1
+STRIDE = 1
+ATTACK_PROB = 0.5
+
+TASK_DESCRIPTION = "3 UAVs must visit start and then reach end as fast as possible while avoiding enemies."
 
 SYSTEM_PROMPT = f"""
 You are a reward engineer trying to write reward functions to solve reinforcement learning tasks as effective as possible.
 Your goal is to write a reward function for the environment that will help the agent learn the task described in text.
 Your reward function should use useful variables from the environment as inputs.
 
-The environment is a GridWorld with multiple UAVs.
+The environment is a Multi-Agent GridWorld with multiple UAVs and Enemies.
 The environment source code is:
 {inspect.getsource(GridWorldMultiAgentEnv)}
 
-There are several enemies which UAVs have to avoid.
+Each UAV (from env.uavs) has:
+- location: tuple (x, y)
+- goal: tuple (x, y)  # The specific destination for this UAV
+- battery: float
+- finished: bool (True if reached goal)
 
-Each UAV has:
-- location: (x, y)
-- goal: (x, y)
-- battery
-- finished (True if reached goal)
+Each Enemy (from env.enemies) has:
+- location: tuple (x, y)
+- danger_area: set of tuples (x, y) representing the attack range
 
-Global:
-- env.start
-- env.end
-- env.uavs (list)
+Global Variables:
+- env.size
+- env.uavs (list of UAV objects)
+- env.enemies (list of Enemy objects)
 
 Task:
-- UAVs must FIRST visit start point
-- THEN reach end point
-- As fast as possible
+- UAVs must reach their assigned `goal` as fast as possible.
+- UAVs must avoid enemies, specifically staying OUT of any enemy's `danger_area`.
+- UAVs must avoid running out of battery.
 
 IMPORTANT:
-- Use env.uavs[i].location
-- Use env.start, env.end
-- Use distance-based rewards (Manhattan distance)
-- Add step penalty
+- Use env.uavs[i].location and env.uavs[i].goal to calculate distance-based rewards (Manhattan distance).
+- Add a step penalty to encourage speed.
+- Give a severe negative penalty if env.uavs[i].location is inside ANY enemy.danger_area.
+- Only use the variables explicitly mentioned above.
 
 Return format:
 
-def _get_rewards_eureka(env):
+def _get_rewards_eureka(uav, enemy_locs):
+    rewards_dict = dict()
+    total_reward = 0.0
     ...
-    ret
-
+    return total_reward, rewards_dict
 """
 
 def check_success(env):
@@ -76,15 +85,23 @@ def check_success(env):
 import json
 import random
 
-def generate_skills(llm, max_skills=5):
+def generate_skills(llm, max_skills=3):
     prompt = f"""
-You are a robotics skill designer.
+You are an expert robotics skill designer for Hierarchical Reinforcement Learning.
 
-Your job is to design reusable SKILLS for a multi-agent reinforcement learning system.
+Your job is to design meaningful and reusable SKILLS for a multi-agent reinforcement learning system. 
+You MUST output ONLY a valid JSON array. No explanations, no markdown formatting outside the JSON block.
 
 --------------------------------------------------
 ENVIRONMENT CODE:
 {inspect.getsource(GridWorldMultiAgentEnv)}
+
+ENVIRONMENT DESCRIPTION:
+- UAV Constraints: Each UAV has a specific destination (`goal`) and a limited `battery`.
+- Enemies: There are {ENEMY_NUM} enemies in the map.
+- Enemy Behavior: Their mode is "{'follow' if FOLLOW else 'random'}". If 'follow', they track UAVs that enter their danger area.
+- Danger Area: A dynamic area around each enemy (radius={AREA}).
+- Attack Mechanics: If a UAV is inside a danger area, it gets attacked with a {ATTACK_PROB} probability, causing severe penalty/battery drain.
 
 --------------------------------------------------
 TASK:
@@ -92,46 +109,40 @@ TASK:
 
 --------------------------------------------------
 GOAL:
-Generate a list of reusable SKILLS that agents can use.
+Generate a list of abstract, meaningful, and reusable SKILLS that agents can use to solve the task.
 
 Each skill must:
-- Be reusable across environments
-- Be behavior-level (NOT low-level actions)
-- Represent a meaningful strategy
+- Be a high-level strategic behavior (NOT a low-level action like 'move_up').
+- Help the UAV balance speed, safety (avoiding enemies), and efficiency (battery).
 
 --------------------------------------------------
-GOOD SKILLS:
-- safe_move
-- fast_move
-- explore_area
-- avoid_enemy
-- lure_enemy
-- coordinate_move
+GOOD SKILLS (Examples):
+- dash_to_goal (Move towards the goal as fast as possible, ignoring minor risks)
+- detour_enemy (Take a longer route to strictly avoid enemy danger areas)
+- wait_for_clearance (Stay in place or step back to let a moving enemy pass)
+- conserve_battery (Take the absolute shortest path, heavily prioritizing battery over safety)
 
-BAD SKILLS:
+BAD SKILLS (Do NOT generate these):
 - move_left
-- move_right
-- go_to_3_4
+- go_to_x3_y4
 - step_forward
 
 --------------------------------------------------
 RULES:
-- Each skill MUST be abstract
-- Each skill MUST be useful for solving the task
-- Maximum {max_skills} skills
+- Maximum {max_skills} skills.
+- The output MUST be a strictly valid JSON array.
 
 --------------------------------------------------
-OUTPUT FORMAT (STRICT JSON ONLY):
+OUTPUT FORMAT:
 [
   {{
     "label": "snake_case_name",
-    "description": "what this skill does",
-    "use_when": "when this skill should be used"
+    "description": "Detailed explanation of what this skill does",
+    "use_when": "Specific situation when the agent should trigger this skill"
   }}
 ]
-
-DO NOT OUTPUT ANYTHING ELSE.
 """
+    # 이후 llm 호출 및 파싱 로직...
 
     res = llm.prompt(prompt)
 
