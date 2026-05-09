@@ -1,0 +1,1327 @@
+Subtask: Place Mug on CounterTop
+Subtask label: pick_up_object
+Category: pickupable
+Success code: any(obj["objectType"] == "Mug" and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"])
+==================================================
+
+
+--- [Iter 1 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Potential-based shaping reward for reducing distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Scaled up slightly for better guidance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Reward for holding the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 10.0  # Increase one-time reward for picking up the mug to encourage reaching this milestone
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Reward for placing the object on the countertop
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 50.0  # High reward for successfully placing the mug on the countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Slightly increased step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0315 | Eval SR: 0.0400 | Mean Reward: -1.2204
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance-based shaping reward for reducing distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.1  # Scaled down for better guidance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Reward for holding the target object (only once)
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0 and env.last_obs["is_holding_target"][0] != (env.last_obs["is_holding_target"][0] if env.last_obs else 0):
+            holding_reward = 5.0  # One-time reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility-based shaping reward for increasing visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.1  # Reward increase in visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Slightly increased step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0407 | Eval SR: 0.0400 | Mean Reward: -2.3502
+
+--- Candidate 3 ---
+> [FAILED] Exception: 'parentReceptacles'
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 10.0  # Moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0448 | Eval SR: 0.0400 | Mean Reward: -1.7012
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance-based shaping reward for reducing distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Scaled up slightly for better guidance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Reward for holding the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 1.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Reward for visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward increase in visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Slightly increased step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    
+    # Final reward scaling to ensure maximum episode reward is moderate
+    total_reward *= 10  # Scale rewards to a reasonable range
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0359 | Eval SR: 0.0400 | Mean Reward: -22.1900
+
+Iteration 1, TrainSuccessRate: 0.04484304932735426, SuccessRate: 0.04
+Score: -1.7011982202529907, SuccessRate: 0.04
+
+--- [Iter 2 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 10.0  # Moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # Placing Reward: Reward for placing the mug on the countertop
+        if any(obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]) for obj in metadata["objects"]):
+            placing_reward = 50.0  # High reward for placing the object on the countertop
+            rewards_dict["placing_reward"] = placing_reward
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0310 | Eval SR: 0.0600 | Mean Reward: 0.6410
+
+--- Candidate 2 ---
+> [FAILED] Exception: argument of type 'NoneType' is not iterable
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 5.0  # Moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 40.0  # High reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0323 | Eval SR: 0.1200 | Mean Reward: -0.9875
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.1  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 5.0  # Reduced moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.1  # Reward for increasing visibility
+        if current_visibility >= 1.0:
+            visibility_reward += 1.0  # Bonus for fully seeing the object
+        rewards_dict["visibility_reward"] = visibility_reward
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0733 | Eval SR: 0.0800 | Mean Reward: 33.9406
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 0.0 and target["distance"] < 0.5:
+            if any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", [])):
+                holding_reward = 5.0  # Moderate reward for picking up the object
+                rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 1.0  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # Placing Reward: One-time reward for placing the mug on the countertop
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            interacted_objects = env.get_interacted_objects()
+            if any("CounterTop" in receptacle for receptacle in interacted_objects["opened"]):
+                placing_reward = 15.0  # High reward for placing the mug on the countertop
+                rewards_dict["placing_reward"] = placing_reward
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0480 | Eval SR: 0.0800 | Mean Reward: -2.3106
+
+Iteration 2, TrainSuccessRate: 0.03225806451612903, SuccessRate: 0.12
+Score: -0.9874992370605469, SuccessRate: 0.12
+
+--- [Iter 3 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Slightly reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 1.0  # Increased reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 40.0  # High reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0264 | Eval SR: 0.1600 | Mean Reward: -1.8548
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Slightly reduced moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Moderately high reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0773 | Eval SR: 0.0800 | Mean Reward: -1.0149
+
+--- Candidate 3 ---
+> [FAILED] Exception: Expected parameter logits (Tensor of shape (64, 14)) of distribution Categorical(logits: torch.Size([64, 14])) to satisfy the constraint IndependentConstraint(Real(), 1), but found invalid values:
+tensor([[nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan]],
+       device='cuda:0', grad_fn=<SubBackward0>)
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Increased reward scaling
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 10.0  # Increased moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 1.0  # Increased reward scaling
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 20.0  # Moderate reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0179 | Eval SR: 0.1600 | Mean Reward: -0.8562
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.1  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.1  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 5.0  # Moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 25.0  # Rescaled high reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0178 | Eval SR: 0.1400 | Mean Reward: -0.4873
+
+Iteration 3, TrainSuccessRate: 0.02643171806167401, SuccessRate: 0.16
+Score: -1.8547985553741455, SuccessRate: 0.16
+
+--- [Iter 4 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Slightly reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reduced reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 15.0  # Reduced reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0409 | Eval SR: 0.1000 | Mean Reward: -0.9867
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Slightly reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 1.0  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Reduced reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0304 | Eval SR: 0.1000 | Mean Reward: -1.9490
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Increased scaling factor
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Increased bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Increased bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Increased bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 5.0  # Slightly increased reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Decreased scaling factor
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Moderately scaled reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0315 | Eval SR: 0.1200 | Mean Reward: -2.0964
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Increased reward scaling
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Increased bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Increased bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Increased bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 2.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 1.0  # Increased reward scaling
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 15.0  # Scaled down reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0230 | Eval SR: 0.1000 | Mean Reward: -0.8324
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.1  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 1.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Moderate reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Smaller negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0459 | Eval SR: 0.1000 | Mean Reward: -0.8751
+
+Iteration 4, TrainSuccessRate: 0.03153153153153153, SuccessRate: 0.12
+Score: -2.09639835357666, SuccessRate: 0.12
+
+--- [Iter 5 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.2  # Scaled down potential-based shaping
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Increased bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Increased bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Increased bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 5.0  # Moderate reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.2  # Scaled down potential-based shaping
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 15.0  # Slightly increased reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0317 | Eval SR: 0.0400 | Mean Reward: -2.3010
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.0  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 2.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 20.0  # Moderately high reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0661 | Eval SR: 0.0400 | Mean Reward: -2.3444
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Increased bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Increased bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Increased bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Moderate reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0435 | Eval SR: 0.0400 | Mean Reward: -2.4038
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 1.5  # Increased scaling factor
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 2.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.7  # Increased scaling factor
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Moderately scaled reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.005  # Slightly reduced negative step penalty to allow exploration
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0183 | Eval SR: 0.0400 | Mean Reward: -0.9264
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Decreased scaling factor
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 10.0  # Moderately scaled reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0230 | Eval SR: 0.0400 | Mean Reward: -2.2016
+
+Iteration 5, TrainSuccessRate: 0.06607929515418502, SuccessRate: 0.04
+Score: -2.344398260116577, SuccessRate: 0.04
+
+--- [Iter 6 All Candidate Results] ---
+--- Candidate 1 ---
+> [FAILED] Exception: Expected parameter logits (Tensor of shape (64, 14)) of distribution Categorical(logits: torch.Size([64, 14])) to satisfy the constraint IndependentConstraint(Real(), 1), but found invalid values:
+tensor([[nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan],
+        [nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan]],
+       device='cuda:0', grad_fn=<SubBackward0>)
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Increased scaling factor
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 5.0  # Increased reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 1.0  # Increased scaling factor
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 20.0  # High reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0136 | Eval SR: 0.0600 | Mean Reward: -2.0592
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Scaled reward for decreasing distance
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 0.5  # Bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 0.5  # Bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 0.5  # Bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 2.0  # Reduced reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 15.0  # Moderately high reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0936 | Eval SR: 0.0400 | Mean Reward: -2.3132
+
+--- Candidate 4 ---
+> [FAILED] Exception: Error encountered when running action {'action': Ai2thorAction.MOVE_AHEAD, 'moveMagnitude': 0.25, 'sequenceId': 56} in scene FloorPlan10_physics.
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    metadata = env.controller.last_event.metadata
+    target = env.find_target_object()
+
+    rewards_dict = {}
+
+    if target:
+        # Distance Reward: Reward reduction in distance to target
+        current_distance = target["distance"]
+        last_distance = env.last_obs["distance"][0] if env.last_obs else np.inf
+        distance_reward = max(last_distance - current_distance, 0) * 0.5  # Increased scaling factor
+        if last_distance > 1.0 and current_distance <= 1.0:
+            distance_reward += 1.0  # Increased bonus for entering 1m range
+        if last_distance > 0.5 and current_distance <= 0.5:
+            distance_reward += 1.0  # Increased bonus for entering 0.5m range
+        if last_distance > 0.2 and current_distance <= 0.2:
+            distance_reward += 1.0  # Increased bonus for entering 0.2m range
+        rewards_dict["distance_reward"] = distance_reward
+
+        # Holding Reward: One-time reward for picking up the target object
+        if env.last_obs and env.last_obs["is_holding_target"][0] == 1.0:
+            holding_reward = 3.0  # Slightly increased reward for picking up the object
+            rewards_dict["holding_reward"] = holding_reward
+
+        # Visibility Reward: Reward increase in visibility
+        current_visibility = target["visible"]
+        last_visibility = env.last_obs["visible"][0] if env.last_obs else 0.0
+        visibility_reward = max(current_visibility - last_visibility, 0) * 0.5  # Reward for increasing visibility
+        rewards_dict["visibility_reward"] = visibility_reward
+
+        # CounterTop Placement Reward: Reward for placing the mug on a countertop
+        interacted_objects = env.get_interacted_objects()
+        if any(obj["objectType"] == env.target_object_type for obj in interacted_objects["inventory"]):
+            for obj in metadata["objects"]:
+                if obj["objectType"] == env.target_object_type and obj["parentReceptacles"] and any("CounterTop" in p for p in obj["parentReceptacles"]):
+                    placement_reward = 15.0  # Moderately high reward for placing the mug on a countertop
+                    rewards_dict["placement_reward"] = placement_reward
+                    break
+
+    # Step penalty to encourage quick completion
+    step_penalty = -0.01  # Small negative step penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+
+    total_reward = sum(rewards_dict.values())
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0182 | Eval SR: 0.0400 | Mean Reward: -2.1922
+
+Iteration 6, TrainSuccessRate: 0.013636363636363636, SuccessRate: 0.06
+Score: -2.0591983795166016, SuccessRate: 0.06

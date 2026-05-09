@@ -1,3 +1,5 @@
+#TODO reward 정규화
+#OBS / eval iter 횟수 수정
 # eureka_main.py
 import os
 import re
@@ -10,11 +12,16 @@ from policy_manager import PolicyManager
 from datetime import datetime
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
+
 NUM_SUGGESTIONS = 5
 TEMPERATURE = 1.0
 MAX_ITERATIONS = 10
-# TRAINING_STEPS = 100
 TRAINING_STEPS = 50000
+
+# NUM_SUGGESTIONS = 2
+# TEMPERATURE = 1.0
+# MAX_ITERATIONS = 1
+# TRAINING_STEPS = 10
 
 TASK_DESCRIPTION = "Place an Mug on a CounterTop"
 
@@ -25,6 +32,14 @@ Your reward function should use useful variables from the environment as inputs.
 
 The environment source code is:
 {inspect.getsource(EurekaThorWrapper)}
+
+** CRITICAL: Observation Coordinate System **
+The `relative_target_pos` is provided in an EGO-CENTRIC coordinate system (the agent is at the origin, looking towards +Z).
+- `relative_target_pos[0]`: Left (-x) / Right (+x) relative to the agent's view.
+- `relative_target_pos[1]`: Below (-y) / Above (+y) relative to the agent's view.
+- `relative_target_pos[2]`: Behind (-z) / In Front (+z) relative to the agent's view. (Increase this to move closer to the target).
+
+When writing rewards, use these indices to guide the agent. For example, to make the agent move toward the target, you should encourage maximizing `relative_target_pos[2]` while minimizing its distance to zero.
 
 As an example, the reward function signature can be:
 def _get_rewards_eureka(env):
@@ -342,8 +357,9 @@ Some helpful tips for analyzing the policy feedback:
             (b) Re-writing the reward component
             (c) Discarding the reward component
     (3) If some reward components' magnitude is significantly larger, then you must re-scale its value to a proper range
-    (4) PREVENT REWARD HACKING: Ensure that continuous rewards (like distance or approach rewards) are strictly bounded (e.g., using `torch.exp` or capping). No single reward component should grow infinitely.
+    (4) PREVENT REWARD HACKING: Do NOT give continuous positive rewards every step for being in a good state (e.g., close to the object). The agent will just stay there to accumulate infinite rewards. Instead, use POTENTIAL-BASED shaping: Reward the agent ONLY when the distance DECREASES compared to the previous step (e.g., `reward = last_distance - current_distance`), or give a one-time reward when crossing a distance threshold.
     (5) STEP PENALTY: Add a small negative step penalty (e.g., -0.01 per step) to encourage the agent to finish the task quickly and prevent it from milking positive rewards without completing the task.
+    (6) REWARD SCALING (CRITICAL): PPO learning is highly unstable if rewards are too large. Ensure the maximum possible reward per episode is tightly bounded. Scale down all components so that achieving the final interaction goal gives a moderate reward like 10.0 to 50.0 (NEVER 500.0 or 1000.0), and dense step rewards are proportionally small fractions (e.g., 0.1 to 1.0).
 Please analyze each existing reward component in the suggested manner above first, and then write the reward function code.
 """
             # print(reward_prompt)
@@ -381,13 +397,13 @@ Please analyze each existing reward component in the suggested manner above firs
                         f.write(f"> [FAILED] Exception: {r.get('exception', 'Unknown error')}\n\n")
 
             # 이후 로직은 동일하게 successful_results로 진행
-            successful_results = [r for r in results if r.get("success", False)]
+            successful_results = [r for r in results if r is not None and r.get("success", False)]
 
         
             if not successful_results:
                 last_feedback = "All reward suggestions failed to execute. Please check the syntax and environment API."
                 continue
-            best_iter_result = max(successful_results, key=lambda x: x["train_success_rate"])
+            best_iter_result = max(successful_results, key=lambda x: (x["success_rate"], x["train_success_rate"], x["reward_mean"]))
             score = best_iter_result["reward_mean"]
             success_rate = best_iter_result["success_rate"]
             train_success_rate = best_iter_result["train_success_rate"]
@@ -431,12 +447,20 @@ Please analyze each existing reward component in the suggested manner above firs
                 f.write(f"Iteration {i+1}, TrainSuccessRate: {train_success_rate}, SuccessRate: {success_rate}\n")
 
             # 🔥 success_rate 기반 feedback
+            # 수정된 코드
             if success_rate < 0.1:
-                last_feedback = (
-                    "The agent almost never succeeds. "
-                    "Add strong and dense intermediate rewards. "
-                    "Guide the agent step-by-step (visibility, distance, interaction)."
-                )
+                if score > 100: # 점수는 높은데 성공을 못함 = 보상 해킹 중
+                    last_feedback = (
+                        "WARNING: The agent is getting very high rewards but failing the task (Reward Hacking). "
+                        "It is exploiting dense rewards (like proximity or visibility) by just standing near the object without actually interacting. "
+                        "DO NOT give positive rewards every step for just being near the object. "
+                        "Use potential-based rewards (e.g., based on the change in distance: last_dist - current_dist) or strictly cap dense rewards per episode."
+                    )
+                else: # 점수도 낮고 성공도 못함 = 진짜 학습 안됨
+                    last_feedback = (
+                        "The agent almost never succeeds and has low rewards. "
+                        "Provide careful potential-based intermediate rewards to guide it closer."
+                    )
 
             elif success_rate < 0.5:
                 last_feedback = (
@@ -485,27 +509,48 @@ Please analyze each existing reward component in the suggested manner above firs
         print(f"✅ Best success rate: {best_success_rate:.4f}")
         print("\n🔥 Final training with BEST reward function...")
 
-        final_reward_data = [{
-            "reward_code": best_reward_code,
-            "success_code": success_code,
-            "precondition_code": s["pre"]
-        }]
+
+        final_reward_data = []
+        for _ in range(NUM_SUGGESTIONS):
+            final_reward_data.append({
+                "reward_code": best_reward_code,
+                "success_code": success_code,
+                "precondition_code": s["pre"],
+                "training_steps": TRAINING_STEPS * 10,  # 🔥 워커 프로세스 내부로 50만 스텝 오버라이드 전달!
+                "eval_episodes": 100  # 🔥 평가 에피소드도 늘려서 안정적인 성능 검증
+            })
 
         # 🔥 더 길게 학습 (중요)
-        task_manager._max_training_iterations = TRAINING_STEPS * 10
-
         final_results = task_manager.train(final_reward_data)
-        final_result = final_results[0]
+        print("final model 학습 완료")
 
-        if final_result["success"]:
-            final_model = final_result["model_state_dict"]
+        valid_final_results = [r for r in final_results if r is not None and r.get("success", False)]
+        if valid_final_results:
+            # 5개의 워커 중 가장 결과가 좋은 놈의 모델을 최종 선택
+            best_final_result = max(valid_final_results, key=lambda x: (x["success_rate"], x["train_success_rate"], x["reward_mean"]))
+            final_model = best_final_result["model_state_dict"]
+
+            with open(log_path, "a") as f:
+                f.write(f"\n--- Final Evaluation of BEST Reward Function across all workers ---\n")
+                for r_idx, r in enumerate(final_results): # successful_results 대신 전체 results 순회
+                    f.write(f"--- Candidate {r_idx+1} ---\n")
+                    if r and r.get("success", False):
+                        c_code = r.get("reward_code", "")
+                        c_train_sr = r.get("train_success_rate", 0)
+                        c_eval_sr = r.get("success_rate", 0)
+                        c_mean = r.get("reward_mean", 0)
+                        f.write(f"{c_code}\n")
+                        f.write(f"> [SUCCESS] Train SR: {c_train_sr:.4f} | Eval SR: {c_eval_sr:.4f} | Mean Reward: {c_mean:.4f}\n\n")
+                    else:
+                        # 🔥 실패한 경우 에러 메시지를 로그에 남깁니다.
+                        error_msg = r.get('exception', 'Unknown error') if r else 'Worker Process No Response (None)'
+                        f.write(f"> [FAILED] Exception: {error_msg}\n\n")
+
             policy_manager.save_policy(final_model, subtask_info['label'])
-
-            print(f"✅ Final model saved (score={final_result['reward_mean']}, success={final_result['success_rate']})")
+            print(f"✅ Final model saved (score={best_final_result['reward_mean']}, success={best_final_result['success_rate']})")
         else:
-            print("❌ Final training failed:", final_result["exception"])
-
-    task_manager.close()
+            print("❌ Final training failed for all workers.")
+        task_manager.close()
 
 
 if __name__ == "__main__":

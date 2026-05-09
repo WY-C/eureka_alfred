@@ -57,18 +57,12 @@ class EurekaThorWrapper(gym.Wrapper):
             self.action_space = env.action_space
 
         self.observation_space = gym.spaces.Dict({
-            "env_obs": gym.spaces.Box(0, 255, (300, 300, 3), dtype=np.uint8),
-
-            "center_x": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
-            "center_y": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
-            "center_z": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
-
-            "distance": gym.spaces.Box(0.0, np.inf, shape=(1,), dtype=np.float32),
-
-            "object_type": gym.spaces.Box(0, len(OBJECT_TO_ID), shape=(1,), dtype=np.int64),
-            "visible": gym.spaces.Box(0, 1, shape=(1,), dtype=np.int64),
+            "relative_target_pos": gym.spaces.Box(-np.inf, np.inf, shape=(3,), dtype=np.float32),
+            "distance": gym.spaces.Box(0.0, np.inf, shape=(1,), dtype=np.float32), # 추가
+            "visible": gym.spaces.Box(0.0, 1.0, shape=(1,), dtype=np.float32),
+            "is_holding_target": gym.spaces.Box(0.0, 1.0, shape=(1,), dtype=np.float32),
+            # "agent_yaw_sc"는 일반성을 위해 제거하셨으므로 여기서도 뺍니다.
         })
-
         self._get_rewards_eureka = None
         self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
 
@@ -127,41 +121,52 @@ class EurekaThorWrapper(gym.Wrapper):
     # -------------------------
     # 🔥 observation 생성
     # -------------------------
+    # -------------------------
+    # 🔥 observation 생성
+    # -------------------------
     def build_observation(self, target):
-        frame = self.controller.last_event.frame
+        """
+        Builds ego-centric observations. 
+        relative_target_pos indices:
+        [0]: Left/Right vector (x)
+        [1]: Up/Down vector (y)
+        [2]: Forward/Backward vector (z) -> The direction the agent is facing.
+        """
+        meta = self.controller.last_event.metadata
+        agent = meta["agent"]
+        
+        # 1. 회전각 계산
+        yaw_rad = np.deg2rad(agent["rotation"]["y"])
+        sin_yaw = np.sin(yaw_rad)
+        cos_yaw = np.cos(yaw_rad)
+
         if target is None:
-            obs = {
-                "env_obs": frame,
-                "center_x": np.array([0.0], dtype=np.float32),
-                "center_y": np.array([0.0], dtype=np.float32),
-                "center_z": np.array([0.0], dtype=np.float32),
-                "distance": np.array([0.0], dtype=np.float32),
-                "object_type": np.array([0], dtype=np.float32),
-                "visible": np.array([0], dtype=np.float32),
-            }
-            self.last_obs = obs
-            return obs
+            ego_rel_pos = np.zeros(3, dtype=np.float32)
+            dist, vis = 0.0, 0.0
+        else:
+            t_pos = target["axisAlignedBoundingBox"]["center"]
+            dx = t_pos["x"] - agent["position"]["x"]
+            dy = t_pos["y"] - agent["position"]["y"]
+            dz = t_pos["z"] - agent["position"]["z"]
+            
+            # 🔥 Ego-centric 변환 적용
+            ego_x =  cos_yaw * dx + sin_yaw * dz
+            ego_z = -sin_yaw * dx + cos_yaw * dz
+            ego_y = dy
+            
+            ego_rel_pos = np.array([ego_x, ego_y, ego_z], dtype=np.float32)
+            dist, vis = target["distance"], float(target["visible"])
 
-        obj_id = OBJECT_TO_ID.get(target["objectType"], 0)
-        center = target["axisAlignedBoundingBox"]["center"]
+        is_holding = any(obj["objectType"] == self.target_object_type for obj in meta.get("inventoryObjects", []))
 
+        # 🔥 반환하는 딕셔너리의 키가 observation_space와 1:1 대응되어야 함
         obs = {
-            "env_obs": frame,
-
-            "center_x": np.array([center["x"]], dtype=np.float32),
-            "center_y": np.array([center["y"]], dtype=np.float32),
-            "center_z": np.array([center["z"]], dtype=np.float32),
-
-            "distance": np.array([target["distance"]], dtype=np.float32),
-
-            "object_type": np.int64(obj_id),
-            "visible": np.array([target["visible"]], dtype=np.int64),
+            "relative_target_pos": ego_rel_pos,
+            "distance": np.array([dist], dtype=np.float32), # 배열화
+            "visible": np.array([vis], dtype=np.float32),   # 배열화
+            "is_holding_target": np.array([1.0 if is_holding else 0.0], dtype=np.float32) # 배열화
         }
-
-        # 🔥 핵심: 저장
-        self.last_obs = obs
-
-        return obs
+        return obs # normalize_obs는 나중에 step/reset에서 호출됨
 
     # -------------------------
     # step
@@ -195,6 +200,9 @@ class EurekaThorWrapper(gym.Wrapper):
             self.count_success += 1
             print('subtask성공')
             self.success_states.append(self.controller.last_event.metadata['objects'])
+            # 2번 태스크를 위해 모아두되, 최대 200개까지만 유지 (OOM 완벽 방어)
+            if len(self.success_states) > 200:
+                self.success_states.pop(0)
             # print(f'success_states added: {self.success_states[-1]}')
 
         if terminated or truncated:
@@ -429,7 +437,9 @@ class EurekaTaskManager:
                 thor_env.count_success = 0
                 model = PPO("MultiInputPolicy", thor_env, ent_coef=0.01, verbose=0, device=self._device)
                 model.learn(total_timesteps=training_steps, progress_bar=True)
-                model_state_dict = model.policy.state_dict()
+                
+                raw_state_dict = model.policy.state_dict()
+                model_state_dict = {k: v.cpu().clone() for k, v in raw_state_dict.items()}
 
 
                 train_tries = thor_env.count_try
@@ -439,7 +449,7 @@ class EurekaTaskManager:
 
 
                 success_count = 0
-                episodes = 10
+                episodes = data.get("eval_episodes", 50)
 
                 episode_rewards = []
 
@@ -513,6 +523,8 @@ class EurekaTaskManager:
                                 success_count += 1
                                 print(f'success count increased: {success_count}')
                                 thor_env.success_states.append(metadata['objects'])
+                                if len(thor_env.success_states) > 200:
+                                    thor_env.success_states.pop(0)
                                 break
                         except Exception as e:
                             print(f"⚠️ success eval error: {e}")
@@ -535,7 +547,8 @@ class EurekaTaskManager:
                     "train_tries": train_tries,               # 🔥 학습 도중 시도 횟수
                     "train_successes": train_successes,       # 🔥 학습 도중 성공 횟수
                     "reward_components": thor_env._reward_components_per_epoches,
-                    "reward_code": reward_code
+                    "reward_code": reward_code,
+                    "saved_success_states": thor_env.success_states
                 }
 
             except Exception as e:
