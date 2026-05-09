@@ -283,11 +283,16 @@ def _get_rewards_eureka(uav, enemy_locs):
             print()
 
             config = (
-            PPOConfig()
-            .environment(
-                env=GridWorldMultiAgentEnv,
-                env_config={
-                    'reward_function': parse_rewards_for_config(reward_data)
+                PPOConfig()
+                .environment(
+                    env=GridWorldMultiAgentEnv,
+                    env_config={
+                        'reward_fn': reward_data['reward_code'], # TODO: 형식에 맞게 수정 필요
+                        'ENEMY_NUM': ENEMY_NUM,
+                        'FOLLOW': FOLLOW,
+                        'AREA': AREA,
+                        'STRIDE': STRIDE,
+                        'ATTACK_PROB': ATTACK_PROB,
                     }
                 )
                 .api_stack(
@@ -447,21 +452,19 @@ def _get_rewards_eureka(uav, enemy_locs):
             "reward_code": best_reward_code,
         }]
 
-        # 🔥 더 길게 학습 (중요)
-        task_manager._max_training_iterations = TRAINING_STEPS * 10
+        # # 🔥 더 길게 학습 (중요)
+        # task_manager._max_training_iterations = TRAINING_STEPS * 10
 
-        final_results = task_manager.train(final_reward_data)
-        final_result = final_results[0]
+        # final_results = task_manager.train(final_reward_data)
+        # final_result = final_results[0]
 
-        if final_result["success"]:
-            final_model = final_result["model_state_dict"]
-            policy_manager.save_policy(final_model, skill_name)
+        # if final_result["success"]:
+        #     final_model = final_result["model_state_dict"]
+        #     policy_manager.save_policy(final_model, skill_name)
 
-            print(f"✅ Final model saved (score={final_result['reward_mean']}, success={final_result['success_rate']})")
-        else:
-            print("❌ Final training failed:", final_result["exception"])
-
-    task_manager.close()
+        #     print(f"✅ Final model saved (score={final_result['reward_mean']}, success={final_result['success_rate']})")
+        # else:
+        #     print("❌ Final training failed:", final_result["exception"])
 
 
 if __name__ == "__main__":
