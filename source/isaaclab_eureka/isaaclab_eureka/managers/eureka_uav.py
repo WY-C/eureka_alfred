@@ -6,9 +6,15 @@ import inspect
 
 from llm_manager import LLMManager
 from eureka_task_manager import EurekaTaskManager, EurekaThorWrapper
-from llmsf.env import GridWorld
+from llmsf.env_rl import GridWorldMultiAgentEnv
 from policy_manager import PolicyManager
 from datetime import datetime
+
+import ray
+from ray.rllib.algorithms.ppo import PPOConfig
+
+ray.init()
+
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 5
@@ -17,47 +23,56 @@ MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
 TRAINING_STEPS = 50000
 
-TASK_DESCRIPTION = "3 UAVs must visit start and then reach end as fast as possible"
+ENEMY_NUM = 3
+FOLLOW = True
+AREA = 1
+STRIDE = 1
+ATTACK_PROB = 0.5
+
+TASK_DESCRIPTION = "3 UAVs must visit start and then reach end as fast as possible while avoiding enemies."
 
 SYSTEM_PROMPT = f"""
 You are a reward engineer trying to write reward functions to solve reinforcement learning tasks as effective as possible.
 Your goal is to write a reward function for the environment that will help the agent learn the task described in text.
 Your reward function should use useful variables from the environment as inputs.
 
-The environment is a GridWorld with multiple UAVs.
+The environment is a Multi-Agent GridWorld with multiple UAVs and Enemies.
 The environment source code is:
-{inspect.getsource(GridWorld)}
+{inspect.getsource(GridWorldMultiAgentEnv)}
 
-There are several enemies which UAVs have to avoid.
+Each UAV (from env.uavs) has:
+- location: tuple (x, y)
+- goal: tuple (x, y)  # The specific destination for this UAV
+- battery: float
+- finished: bool (True if reached goal)
 
-Each UAV has:
-- location: (x, y)
-- goal: (x, y)
-- battery
-- finished (True if reached goal)
+Each Enemy (from env.enemies) has:
+- location: tuple (x, y)
+- danger_area: set of tuples (x, y) representing the attack range
 
-Global:
-- env.start
-- env.end
-- env.uavs (list)
+Global Variables:
+- env.size
+- env.uavs (list of UAV objects)
+- env.enemies (list of Enemy objects)
 
 Task:
-- UAVs must FIRST visit start point
-- THEN reach end point
-- As fast as possible
+- UAVs must reach their assigned `goal` as fast as possible.
+- UAVs must avoid enemies, specifically staying OUT of any enemy's `danger_area`.
+- UAVs must avoid running out of battery.
 
 IMPORTANT:
-- Use env.uavs[i].location
-- Use env.start, env.end
-- Use distance-based rewards (Manhattan distance)
-- Add step penalty
+- Use env.uavs[i].location and env.uavs[i].goal to calculate distance-based rewards (Manhattan distance).
+- Add a step penalty to encourage speed.
+- Give a severe negative penalty if env.uavs[i].location is inside ANY enemy.danger_area.
+- Only use the variables explicitly mentioned above.
 
 Return format:
 
-def _get_rewards_eureka(env):
+def _get_rewards_eureka(uav, enemy_locs):
+    rewards_dict = dict()
+    total_reward = 0.0
     ...
-    ret
-
+    return total_reward, rewards_dict
 """
 
 def check_success(env):
@@ -70,15 +85,23 @@ def check_success(env):
 import json
 import random
 
-def generate_skills(llm, max_skills=5):
+def generate_skills(llm, max_skills=3):
     prompt = f"""
-You are a robotics skill designer.
+You are an expert robotics skill designer for Hierarchical Reinforcement Learning.
 
-Your job is to design reusable SKILLS for a multi-agent reinforcement learning system.
+Your job is to design meaningful and reusable SKILLS for a multi-agent reinforcement learning system. 
+You MUST output ONLY a valid JSON array. No explanations, no markdown formatting outside the JSON block.
 
 --------------------------------------------------
 ENVIRONMENT CODE:
-{inspect.getsource(GridWorld)}
+{inspect.getsource(GridWorldMultiAgentEnv)}
+
+ENVIRONMENT DESCRIPTION:
+- UAV Constraints: Each UAV has a specific destination (`goal`) and a limited `battery`.
+- Enemies: There are {ENEMY_NUM} enemies in the map.
+- Enemy Behavior: Their mode is "{'follow' if FOLLOW else 'random'}". If 'follow', they track UAVs that enter their danger area.
+- Danger Area: A dynamic area around each enemy (radius={AREA}).
+- Attack Mechanics: If a UAV is inside a danger area, it gets attacked with a {ATTACK_PROB} probability, causing severe penalty/battery drain.
 
 --------------------------------------------------
 TASK:
@@ -86,46 +109,40 @@ TASK:
 
 --------------------------------------------------
 GOAL:
-Generate a list of reusable SKILLS that agents can use.
+Generate a list of abstract, meaningful, and reusable SKILLS that agents can use to solve the task.
 
 Each skill must:
-- Be reusable across environments
-- Be behavior-level (NOT low-level actions)
-- Represent a meaningful strategy
+- Be a high-level strategic behavior (NOT a low-level action like 'move_up').
+- Help the UAV balance speed, safety (avoiding enemies), and efficiency (battery).
 
 --------------------------------------------------
-GOOD SKILLS:
-- safe_move
-- fast_move
-- explore_area
-- avoid_enemy
-- lure_enemy
-- coordinate_move
+GOOD SKILLS (Examples):
+- dash_to_goal (Move towards the goal as fast as possible, ignoring minor risks)
+- detour_enemy (Take a longer route to strictly avoid enemy danger areas)
+- wait_for_clearance (Stay in place or step back to let a moving enemy pass)
+- conserve_battery (Take the absolute shortest path, heavily prioritizing battery over safety)
 
-BAD SKILLS:
+BAD SKILLS (Do NOT generate these):
 - move_left
-- move_right
-- go_to_3_4
+- go_to_x3_y4
 - step_forward
 
 --------------------------------------------------
 RULES:
-- Each skill MUST be abstract
-- Each skill MUST be useful for solving the task
-- Maximum {max_skills} skills
+- Maximum {max_skills} skills.
+- The output MUST be a strictly valid JSON array.
 
 --------------------------------------------------
-OUTPUT FORMAT (STRICT JSON ONLY):
+OUTPUT FORMAT:
 [
   {{
     "label": "snake_case_name",
-    "description": "what this skill does",
-    "use_when": "when this skill should be used"
+    "description": "Detailed explanation of what this skill does",
+    "use_when": "Specific situation when the agent should trigger this skill"
   }}
 ]
-
-DO NOT OUTPUT ANYTHING ELSE.
 """
+    # 이후 llm 호출 및 파싱 로직...
 
     res = llm.prompt(prompt)
 
@@ -180,6 +197,17 @@ def validate_skills(skills):
 
     return validated
 
+def parse_rewards_for_config(llm_outputs):
+    parsed_rewards = []
+    
+    for output in llm_outputs:
+        if 'reward_code' in output:
+            # LLM 출력 문자열에 포함된 Non-breaking space(\xa0)를 일반 공백으로 치환
+            clean_code = output['reward_code'].replace('\xa0', ' ')
+            parsed_rewards.append(clean_code)
+            
+    return parsed_rewards
+
 def run_train_loop():
     llm = LLMManager(
         gpt_model=GPT_MODEL,
@@ -212,11 +240,11 @@ def run_train_loop():
             f.write(f"Skill name: {skill_name}\n")
             f.write("="*50 + "\n\n")
 
-        task_manager = EurekaTaskManager(
-            num_processes=NUM_SUGGESTIONS,
-            max_training_iterations=TRAINING_STEPS,
-            category='navigate'
-        )
+        # task_manager = EurekaTaskManager(
+        #     num_processes=NUM_SUGGESTIONS,
+        #     max_training_iterations=TRAINING_STEPS,
+        #     category='navigate'
+        # )
         best_reward_code = None
         best_success_rate = -1
 
@@ -236,14 +264,12 @@ Environment:
 - Enemies exist (avoid them)
 
 IMPORTANT:
-- Use env.uavs[i].location
-- Use env.enemies[j].location
-- Use Manhattan distance
+- Input parameter must be uav, enemy_locs
 - Add step penalty
 
 Return:
 
-def _get_rewards_eureka(env):
+def _get_rewards_eureka(uav, enemy_locs):
     ...
 """
             # print(reward_prompt)
@@ -253,8 +279,42 @@ def _get_rewards_eureka(env):
             #print("response:", response)
             reward_strings = response["reward_strings"]
             reward_data = [{"reward_code": r} for r in reward_strings]
+            print(reward_data)
+            print()
 
-            results = task_manager.train(reward_data)
+            config = (
+                PPOConfig()
+                .environment(
+                    env=GridWorldMultiAgentEnv,
+                    env_config={
+                        'reward_fn': reward_data['reward_code'], # TODO: 형식에 맞게 수정 필요
+                        'ENEMY_NUM': ENEMY_NUM,
+                        'FOLLOW': FOLLOW,
+                        'AREA': AREA,
+                        'STRIDE': STRIDE,
+                        'ATTACK_PROB': ATTACK_PROB,
+                    }
+                )
+                .api_stack(
+                    enable_rl_module_and_learner=False,
+                    enable_env_runner_and_connector_v2=False
+                )
+                .framework("torch")
+                .env_runners(num_env_runners=2)
+                .training(
+                    train_batch_size=1000,
+                    gamma=0.99,
+                    lr=5e-4
+                )
+                .multi_agent(
+                    policies={"shared_policy"},
+                    policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
+                )
+            )
+
+            algo = config.build()
+
+            results = algo.train()
 
             successful = [r for r in results if r.get("success", False)]
 
@@ -392,21 +452,19 @@ def _get_rewards_eureka(env):
             "reward_code": best_reward_code,
         }]
 
-        # 🔥 더 길게 학습 (중요)
-        task_manager._max_training_iterations = TRAINING_STEPS * 10
+        # # 🔥 더 길게 학습 (중요)
+        # task_manager._max_training_iterations = TRAINING_STEPS * 10
 
-        final_results = task_manager.train(final_reward_data)
-        final_result = final_results[0]
+        # final_results = task_manager.train(final_reward_data)
+        # final_result = final_results[0]
 
-        if final_result["success"]:
-            final_model = final_result["model_state_dict"]
-            policy_manager.save_policy(final_model, skill_name)
+        # if final_result["success"]:
+        #     final_model = final_result["model_state_dict"]
+        #     policy_manager.save_policy(final_model, skill_name)
 
-            print(f"✅ Final model saved (score={final_result['reward_mean']}, success={final_result['success_rate']})")
-        else:
-            print("❌ Final training failed:", final_result["exception"])
-
-    task_manager.close()
+        #     print(f"✅ Final model saved (score={final_result['reward_mean']}, success={final_result['success_rate']})")
+        # else:
+        #     print("❌ Final training failed:", final_result["exception"])
 
 
 if __name__ == "__main__":
