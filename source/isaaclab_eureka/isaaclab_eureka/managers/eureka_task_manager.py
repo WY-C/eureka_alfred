@@ -43,6 +43,190 @@ def normalize_obs(obs):
             obs[k] = np.array([v], dtype=np.float32)
     return obs
 
+def _eureka_worker(idx, queue, results_queue, termination_event, env_name, config_path, max_training_iterations, device, target_object_type):
+    raw_env = gym.make(env_name, config_path=config_path, config_override={"max_episode_steps": 250})
+    thor_env = EurekaThorWrapper(raw_env)
+    thor_env.unwrapped.target_object_type = target_object_type
+
+    while not termination_event.is_set():
+        data = queue.get()
+        if data == "Stop":
+            break
+
+        thor_env._eureka_components_history = {}
+        thor_env._reward_components_per_epoches = {}
+        thor_env.count_try = 0
+        thor_env.count_success = 0
+
+        # 🔥 1. [추가] 새로운 학습마다 과거의 성공 상태 리스트를 비워줍니다!
+        thor_env.success_states = []
+
+        reward_code = data["reward_code"]
+        success_code = data["success_code"]
+        precondition_code = "True"
+
+        training_steps = data.get("training_steps", max_training_iterations)
+
+        try:
+            
+            ns = {  
+                "np": np, 
+                    "torch": torch,
+                    "AVAILABLE_OBJECT_TYPES": AVAILABLE_OBJECT_TYPES,
+                    "OBJECT_TO_ID": OBJECT_TO_ID
+            }
+            reward_code = clean_code(reward_code)
+            reward_code = fix_function_name(reward_code)
+
+            exec(reward_code, ns)
+
+            if "_get_rewards_eureka" not in ns:
+                raise ValueError("LLM did not define _get_rewards_eureka")
+
+            thor_env._get_rewards_eureka = ns["_get_rewards_eureka"]
+
+            MAX_RESET_TRY = 50
+            found = False
+
+            for _ in range(MAX_RESET_TRY):
+                obs, _ = thor_env.reset()
+                metadata = thor_env.unwrapped.controller.last_event.metadata
+                current_target = getattr(thor_env.unwrapped, "target_object_type", None)
+
+                try:
+                    if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
+                        found = True
+                        break
+                except Exception as e:
+                    print(f"⚠️ precondition eval error: {e}")
+                    break
+
+            if not found:
+                print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
+            thor_env.count_try = 0
+            thor_env.count_success = 0
+            model = PPO("MultiInputPolicy", thor_env, ent_coef=0.01, verbose=0, device=device)
+            model.learn(total_timesteps=training_steps, progress_bar=True)
+            
+            raw_state_dict = model.policy.state_dict()
+            model_state_dict = {k: v.cpu().clone() for k, v in raw_state_dict.items()}
+
+
+            train_tries = thor_env.count_try
+            train_successes = thor_env.count_success
+            train_success_rate = train_successes / max(1, train_tries) # 0으로 나누기 방지
+            print(f"[Training Phase] Success: {train_successes}/{train_tries} ({train_success_rate * 100:.2f}%)")
+
+
+            success_count = 0
+            episodes = data.get("eval_episodes", 50)
+
+            episode_rewards = []
+
+            for _ in range(episodes):
+                for _ in range(MAX_RESET_TRY):
+                    obs, _ = thor_env.reset()
+                    metadata = thor_env.unwrapped.controller.last_event.metadata
+                    current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+
+                    try:
+                        # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
+                        if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                            break
+                    except:
+                        break
+
+                # Subtask 성공 상태에서 시작하는 로직
+                # if thor_env.success_states:
+                #     for state in thor_env.success_states[random.randint(0, len(thor_env.success_states) - 1)]:
+                #         if state['objectType'] == self._target_object_type:
+                #             precondition = state
+                #             break
+
+                #     thor_env.unwrapped.controller.step(
+                #         action='SetObjectPoses',
+                #         objectPoses=[
+                #             {
+                #                 'objectName': precondition['name'],
+                #                 'rotation': {
+                #                     'y': precondition['rotation']['y'],
+                #                     'x': precondition['rotation']['x'],
+                #                     'z': precondition['rotation']['z']
+                #                 },
+                #                 'position': {
+                #                     'y': precondition['position']['y'],
+                #                     'x': precondition['position']['x'],
+                #                     'z': precondition['position']['z']
+                #                 }
+                #             }
+                #         ]
+                #     )
+                #     target = thor_env.find_target_object()
+                #     obs = thor_env.build_observation(target)
+                #     obs = normalize_obs(obs)
+
+                # else:
+                #     for _ in range(MAX_RESET_TRY):
+                #         obs, _ = thor_env.reset()
+                #         metadata = thor_env.unwrapped.controller.last_event.metadata
+                #         current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+
+                #         try:
+                #             # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
+                #             if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
+                #                 break
+                #         except:
+                #             break
+
+                done = False
+                while not done:
+                    action, _ = model.predict(obs)
+                    #print(f'action: {action}')
+                    obs, _, terminated, truncated, _ = thor_env.step(action)
+                    done = terminated or truncated
+
+                    metadata = thor_env.unwrapped.controller.last_event.metadata
+                    current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
+
+                    try:
+                        if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
+                            success_count += 1
+                            # print(f'success count increased: {success_count}')
+                            thor_env.success_states.append(metadata['objects'])
+                            if len(thor_env.success_states) > 200:
+                                thor_env.success_states.pop(0)
+                            break
+                    except Exception as e:
+                        print(f"⚠️ success eval error: {e}")
+                        break
+                episode_rewards.append(
+                    thor_env._eureka_episode_sums["eureka_total_rewards"]
+                )
+
+            # print(f'final success count: {success_count}')
+            # print(f'final episode: {episodes}')
+            success_rate = success_count / episodes
+            reward_mean = np.mean(episode_rewards)
+
+            result = {
+                "success": True,
+                "reward_mean": reward_mean,
+                "success_rate": success_rate,
+                "model_state_dict": model_state_dict,
+                "train_success_rate": train_success_rate, # 🔥 학습 도중 성공률
+                "train_tries": train_tries,               # 🔥 학습 도중 시도 횟수
+                "train_successes": train_successes,       # 🔥 학습 도중 성공 횟수
+                "reward_components": thor_env._reward_components_per_epoches,
+                "reward_code": reward_code,
+                "saved_success_states": thor_env.success_states
+            }
+
+        except Exception as e:
+            print(traceback.format_exc())
+            result = {"success": False, "exception": str(e)}
+
+        results_queue.put((idx, result))
+
 # -------------------------
 # Wrapper
 # -------------------------
@@ -62,6 +246,7 @@ class EurekaThorWrapper(gym.Wrapper):
             "visible": gym.spaces.Box(0.0, 1.0, shape=(1,), dtype=np.float32),
             "is_holding_target": gym.spaces.Box(0.0, 1.0, shape=(1,), dtype=np.float32),
             # "agent_yaw_sc"는 일반성을 위해 제거하셨으므로 여기서도 뺍니다.
+            "camera_horizon": gym.spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
         })
         self._get_rewards_eureka = None
         self._eureka_episode_sums = {"eureka_total_rewards": 0.0}
@@ -71,6 +256,7 @@ class EurekaThorWrapper(gym.Wrapper):
         self.count_try = 0
         self.count_success = 0
         self.last_obs = None
+        self.prev_obs = None
 
         self.success_states = []
 
@@ -140,6 +326,9 @@ class EurekaThorWrapper(gym.Wrapper):
         sin_yaw = np.sin(yaw_rad)
         cos_yaw = np.cos(yaw_rad)
 
+        camera_pitch = agent["cameraHorizon"] / 90
+
+
         if target is None:
             ego_rel_pos = np.zeros(3, dtype=np.float32)
             dist, vis = 0.0, 0.0
@@ -164,7 +353,9 @@ class EurekaThorWrapper(gym.Wrapper):
             "relative_target_pos": ego_rel_pos,
             "distance": np.array([dist], dtype=np.float32), # 배열화
             "visible": np.array([vis], dtype=np.float32),   # 배열화
-            "is_holding_target": np.array([1.0 if is_holding else 0.0], dtype=np.float32) # 배열화
+            "is_holding_target": np.array([1.0 if is_holding else 0.0], dtype=np.float32), # 배열화
+            "camera_horizon": np.array([camera_pitch], dtype=np.float32)
+            
         }
         return obs # normalize_obs는 나중에 step/reset에서 호출됨
 
@@ -174,6 +365,7 @@ class EurekaThorWrapper(gym.Wrapper):
     def step(self, action):
         if not isinstance(action, dict):
             action = {"action_index": int(action)}
+        self.prev_obs = self.last_obs
 
         obs, reward, terminated, truncated, info = self.env.step(action)
 
@@ -198,7 +390,7 @@ class EurekaThorWrapper(gym.Wrapper):
         if self.controller.last_event.metadata.get('inventoryObjects') and self.controller.last_event.metadata.get('inventoryObjects')[0]['objectType'] == self.target_object_type:
             terminated = True
             self.count_success += 1
-            print('subtask성공')
+            # print('subtask성공')
             self.success_states.append(self.controller.last_event.metadata['objects'])
             # 2번 태스크를 위해 모아두되, 최대 200개까지만 유지 (OOM 완벽 방어)
             if len(self.success_states) > 200:
@@ -216,7 +408,6 @@ class EurekaThorWrapper(gym.Wrapper):
                 )
             #print("self._reward_components_per_epoches:", self._reward_components_per_epoches)
             info["terminal_observation"] = normalize_obs(obs)
-
 
 
         return obs, reward, terminated, truncated, info
@@ -237,6 +428,9 @@ class EurekaThorWrapper(gym.Wrapper):
 
         self._eureka_components_history = {}
         #self._reward_components_per_epoches = {}
+
+        self.last_obs = obs
+        self.prev_obs = obs
 
         return obs, info
     
@@ -339,8 +533,21 @@ class EurekaTaskManager:
 
         self._processes = {}
         for idx in range(self._num_processes):
-            p = multiprocessing.Process(target=self._worker, args=(idx, self._rewards_queues[idx]))
-            p.daemon = True 
+            p = multiprocessing.Process(
+                target=_eureka_worker, 
+                args=(
+                    idx, 
+                    self._rewards_queues[idx], 
+                    self._results_queue,
+                    self.termination_event,
+                    self._env,
+                    self._config_path,
+                    self._max_training_iterations,
+                    self._device,
+                    self._target_object_type # 필요한 데이터만 쏙쏙 골라서 전달
+                )
+            )
+            p.daemon = True
             self._processes[idx] = p
             p.start()
 
@@ -373,189 +580,6 @@ class EurekaTaskManager:
         self._target_object_type = target_object_type
         self.thor_env.unwrapped.target_object_type = target_object_type
         
-    def _worker(self, idx, queue):
-        raw_env = gym.make(self._env, config_path=self._config_path, config_override={"max_episode_steps": 250})
-        thor_env = EurekaThorWrapper(raw_env)
-        thor_env.unwrapped.target_object_type = self._target_object_type
-
-        while not self.termination_event.is_set():
-            data = queue.get()
-            if data == "Stop":
-                break
-
-            thor_env._eureka_components_history = {}
-            thor_env._reward_components_per_epoches = {}
-            thor_env.count_try = 0
-            thor_env.count_success = 0
-
-            # 🔥 1. [추가] 새로운 학습마다 과거의 성공 상태 리스트를 비워줍니다!
-            thor_env.success_states = []
-
-            reward_code = data["reward_code"]
-            success_code = data["success_code"]
-            precondition_code = "True"
-
-            training_steps = data.get("training_steps", self._max_training_iterations)
-
-            try:
-                
-                ns = {  
-                    "np": np, 
-                        "torch": torch,
-                        "AVAILABLE_OBJECT_TYPES": AVAILABLE_OBJECT_TYPES,
-                        "OBJECT_TO_ID": OBJECT_TO_ID
-                }
-                reward_code = clean_code(reward_code)
-                reward_code = fix_function_name(reward_code)
-
-                exec(reward_code, ns)
-
-                if "_get_rewards_eureka" not in ns:
-                    raise ValueError("LLM did not define _get_rewards_eureka")
-
-                thor_env._get_rewards_eureka = ns["_get_rewards_eureka"]
-
-                MAX_RESET_TRY = 50
-                found = False
-
-                for _ in range(MAX_RESET_TRY):
-                    obs, _ = thor_env.reset()
-                    metadata = thor_env.unwrapped.controller.last_event.metadata
-                    current_target = getattr(thor_env.unwrapped, "target_object_type", None)
-
-                    try:
-                        if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
-                            found = True
-                            break
-                    except Exception as e:
-                        print(f"⚠️ precondition eval error: {e}")
-                        break
-
-                if not found:
-                    print("⚠️ [경고] 최대 Reset 시도에도 precondition을 만족하는 초기 상태를 찾지 못했습니다! (에이전트가 빈 손일 확률이 높음)")
-                thor_env.count_try = 0
-                thor_env.count_success = 0
-                model = PPO("MultiInputPolicy", thor_env, ent_coef=0.01, verbose=0, device=self._device)
-                model.learn(total_timesteps=training_steps, progress_bar=True)
-                
-                raw_state_dict = model.policy.state_dict()
-                model_state_dict = {k: v.cpu().clone() for k, v in raw_state_dict.items()}
-
-
-                train_tries = thor_env.count_try
-                train_successes = thor_env.count_success
-                train_success_rate = train_successes / max(1, train_tries) # 0으로 나누기 방지
-                print(f"[Training Phase] Success: {train_successes}/{train_tries} ({train_success_rate * 100:.2f}%)")
-
-
-                success_count = 0
-                episodes = data.get("eval_episodes", 50)
-
-                episode_rewards = []
-
-                for _ in range(episodes):
-                    for _ in range(MAX_RESET_TRY):
-                        obs, _ = thor_env.reset()
-                        metadata = thor_env.unwrapped.controller.last_event.metadata
-                        current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
-
-                        try:
-                            # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
-                            if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
-                                break
-                        except:
-                            break
-
-                    # Subtask 성공 상태에서 시작하는 로직
-                    # if thor_env.success_states:
-                    #     for state in thor_env.success_states[random.randint(0, len(thor_env.success_states) - 1)]:
-                    #         if state['objectType'] == self._target_object_type:
-                    #             precondition = state
-                    #             break
-
-                    #     thor_env.unwrapped.controller.step(
-                    #         action='SetObjectPoses',
-                    #         objectPoses=[
-                    #             {
-                    #                 'objectName': precondition['name'],
-                    #                 'rotation': {
-                    #                     'y': precondition['rotation']['y'],
-                    #                     'x': precondition['rotation']['x'],
-                    #                     'z': precondition['rotation']['z']
-                    #                 },
-                    #                 'position': {
-                    #                     'y': precondition['position']['y'],
-                    #                     'x': precondition['position']['x'],
-                    #                     'z': precondition['position']['z']
-                    #                 }
-                    #             }
-                    #         ]
-                    #     )
-                    #     target = thor_env.find_target_object()
-                    #     obs = thor_env.build_observation(target)
-                    #     obs = normalize_obs(obs)
-
-                    # else:
-                    #     for _ in range(MAX_RESET_TRY):
-                    #         obs, _ = thor_env.reset()
-                    #         metadata = thor_env.unwrapped.controller.last_event.metadata
-                    #         current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
-
-                    #         try:
-                    #             # 🔥 수정됨: 평가 루프 초기화 시에도 TARGET_TYPE 주입
-                    #             if eval(precondition_code, {"metadata": metadata, "TARGET_TYPE": current_target}):
-                    #                 break
-                    #         except:
-                    #             break
-
-                    done = False
-                    while not done:
-                        action, _ = model.predict(obs)
-                        #print(f'action: {action}')
-                        obs, _, terminated, truncated, _ = thor_env.step(action)
-                        done = terminated or truncated
-
-                        metadata = thor_env.unwrapped.controller.last_event.metadata
-                        current_target = getattr(thor_env.unwrapped, "target_object_type", AVAILABLE_OBJECT_TYPES)
-
-                        try:
-                            if eval(success_code, {"metadata": metadata, "TARGET_TYPE": current_target, "env": thor_env}):
-                                success_count += 1
-                                print(f'success count increased: {success_count}')
-                                thor_env.success_states.append(metadata['objects'])
-                                if len(thor_env.success_states) > 200:
-                                    thor_env.success_states.pop(0)
-                                break
-                        except Exception as e:
-                            print(f"⚠️ success eval error: {e}")
-                            break
-                    episode_rewards.append(
-                        thor_env._eureka_episode_sums["eureka_total_rewards"]
-                    )
-
-                print(f'final success count: {success_count}')
-                print(f'final episode: {episodes}')
-                success_rate = success_count / episodes
-                reward_mean = np.mean(episode_rewards)
-
-                result = {
-                    "success": True,
-                    "reward_mean": reward_mean,
-                    "success_rate": success_rate,
-                    "model_state_dict": model_state_dict,
-                    "train_success_rate": train_success_rate, # 🔥 학습 도중 성공률
-                    "train_tries": train_tries,               # 🔥 학습 도중 시도 횟수
-                    "train_successes": train_successes,       # 🔥 학습 도중 성공 횟수
-                    "reward_components": thor_env._reward_components_per_epoches,
-                    "reward_code": reward_code,
-                    "saved_success_states": thor_env.success_states
-                }
-
-            except Exception as e:
-                print(traceback.format_exc())
-                result = {"success": False, "exception": str(e)}
-
-            self._results_queue.put((idx, result))
 
     def close(self):
         self.termination_event.set()
@@ -564,201 +588,201 @@ class EurekaTaskManager:
         for p in self._processes.values():
             p.join(timeout=2)
 
-import traceback
-from stable_baselines3.common.env_checker import check_env
-from llmsf.env import GridWorld
+# import traceback
+# from stable_baselines3.common.env_checker import check_env
+# from llmsf.env import GridWorld
 
 
-class GridTaskManager:
-    def __init__(
-        self,
-        num_envs=1,
-        device="cpu",
-        max_training_steps=50000,
-        max_episode_steps=200
-    ):
-        self.num_envs = num_envs
-        self.device = device
-        self.max_training_steps = max_training_steps
-        self.max_episode_steps = max_episode_steps
+# class GridTaskManager:
+#     def __init__(
+#         self,
+#         num_envs=1,
+#         device="cpu",
+#         max_training_steps=50000,
+#         max_episode_steps=200
+#     ):
+#         self.num_envs = num_envs
+#         self.device = device
+#         self.max_training_steps = max_training_steps
+#         self.max_episode_steps = max_episode_steps
 
-    # -------------------------------
-    # ✅ Env 생성
-    # -------------------------------
-    def _build_env(self):
-        env = GridWorld()
-        return env
+#     # -------------------------------
+#     # ✅ Env 생성
+#     # -------------------------------
+#     def _build_env(self):
+#         env = GridWorld()
+#         return env
 
-    # -------------------------------
-    # ✅ Reward 함수 주입
-    # -------------------------------
-    def _inject_reward(self, env, reward_code):
-        ns = {
-            "np": np,
-            "torch": torch,
-        }
+#     # -------------------------------
+#     # ✅ Reward 함수 주입
+#     # -------------------------------
+#     def _inject_reward(self, env, reward_code):
+#         ns = {
+#             "np": np,
+#             "torch": torch,
+#         }
 
-        exec(reward_code, ns)
+#         exec(reward_code, ns)
 
-        if "_get_rewards_eureka" not in ns:
-            raise ValueError("Reward function not defined")
+#         if "_get_rewards_eureka" not in ns:
+#             raise ValueError("Reward function not defined")
 
-        env._get_rewards_eureka = ns["_get_rewards_eureka"]
+#         env._get_rewards_eureka = ns["_get_rewards_eureka"]
 
-    # -------------------------------
-    # ✅ Success 정의 (skill별)
-    # -------------------------------
-    def _check_success(self, env, skill):
-        # 모든 UAV가 목표 도달
-        if skill == "fast_move":
-            return all(uav.finished for uav in env.uavs)
+#     # -------------------------------
+#     # ✅ Success 정의 (skill별)
+#     # -------------------------------
+#     def _check_success(self, env, skill):
+#         # 모든 UAV가 목표 도달
+#         if skill == "fast_move":
+#             return all(uav.finished for uav in env.uavs)
 
-        # 안전하게 도착 (enemy 근접 없음)
-        elif skill == "safe_move":
-            for uav in env.uavs:
-                if not uav.finished:
-                    return False
-                for enemy in env.enemies:
-                    if abs(uav.location[0] - enemy.location[0]) + abs(uav.location[1] - enemy.location[1]) <= 1:
-                        return False
-            return True
+#         # 안전하게 도착 (enemy 근접 없음)
+#         elif skill == "safe_move":
+#             for uav in env.uavs:
+#                 if not uav.finished:
+#                     return False
+#                 for enemy in env.enemies:
+#                     if abs(uav.location[0] - enemy.location[0]) + abs(uav.location[1] - enemy.location[1]) <= 1:
+#                         return False
+#             return True
 
-        # lure: 적이 특정 UAV 쪽으로 몰림
-        elif skill == "lure":
-            center_uav = env.uavs[0]
-            others = env.uavs[1:]
+#         # lure: 적이 특정 UAV 쪽으로 몰림
+#         elif skill == "lure":
+#             center_uav = env.uavs[0]
+#             others = env.uavs[1:]
 
-            enemy_dist_center = np.mean([
-                abs(enemy.location[0] - center_uav.location[0]) +
-                abs(enemy.location[1] - center_uav.location[1])
-                for enemy in env.enemies
-            ])
+#             enemy_dist_center = np.mean([
+#                 abs(enemy.location[0] - center_uav.location[0]) +
+#                 abs(enemy.location[1] - center_uav.location[1])
+#                 for enemy in env.enemies
+#             ])
 
-            enemy_dist_others = np.mean([
-                min(
-                    abs(enemy.location[0] - u.location[0]) +
-                    abs(enemy.location[1] - u.location[1])
-                    for u in others
-                )
-                for enemy in env.enemies
-            ])
+#             enemy_dist_others = np.mean([
+#                 min(
+#                     abs(enemy.location[0] - u.location[0]) +
+#                     abs(enemy.location[1] - u.location[1])
+#                     for u in others
+#                 )
+#                 for enemy in env.enemies
+#             ])
 
-            return enemy_dist_center < enemy_dist_others
+#             return enemy_dist_center < enemy_dist_others
 
-        return False
+#         return False
 
-    # -------------------------------
-    # ✅ 단일 reward 학습
-    # -------------------------------
-    def _train_single(self, reward_code, skill):
+#     # -------------------------------
+#     # ✅ 단일 reward 학습
+#     # -------------------------------
+#     def _train_single(self, reward_code, skill):
 
-        try:
-            env = self._build_env()
+#         try:
+#             env = self._build_env()
 
-            # reward 주입
-            self._inject_reward(env, reward_code)
+#             # reward 주입
+#             self._inject_reward(env, reward_code)
 
-            # SB3 wrapper 필요하면 여기 추가 가능
-            model = PPO("MlpPolicy", env, verbose=0, device=self.device)
+#             # SB3 wrapper 필요하면 여기 추가 가능
+#             model = PPO("MlpPolicy", env, verbose=0, device=self.device)
 
-            model.learn(total_timesteps=self.max_training_steps)
+#             model.learn(total_timesteps=self.max_training_steps)
 
-            # -------------------
-            # Evaluation
-            # -------------------
-            success_count = 0
-            episodes = 10
-            rewards = []
+#             # -------------------
+#             # Evaluation
+#             # -------------------
+#             success_count = 0
+#             episodes = 10
+#             rewards = []
 
-            for _ in range(episodes):
-                env = self._build_env()
-                self._inject_reward(env, reward_code)
+#             for _ in range(episodes):
+#                 env = self._build_env()
+#                 self._inject_reward(env, reward_code)
 
-                done = False
-                total_reward = 0
-                step = 0
+#                 done = False
+#                 total_reward = 0
+#                 step = 0
 
-                while not done and step < self.max_episode_steps:
-                    obs = self._get_obs(env)
+#                 while not done and step < self.max_episode_steps:
+#                     obs = self._get_obs(env)
 
-                    action, _ = model.predict(obs)
+#                     action, _ = model.predict(obs)
 
-                    self._step_env(env, action)
+#                     self._step_env(env, action)
 
-                    r, _ = env._get_rewards_eureka(env)
-                    total_reward += float(r)
+#                     r, _ = env._get_rewards_eureka(env)
+#                     total_reward += float(r)
 
-                    if self._check_success(env, skill):
-                        success_count += 1
-                        break
+#                     if self._check_success(env, skill):
+#                         success_count += 1
+#                         break
 
-                    step += 1
+#                     step += 1
 
-                rewards.append(total_reward)
+#                 rewards.append(total_reward)
 
-            result = {
-                "success": True,
-                "success_rate": success_count / episodes,
-                "reward_mean": np.mean(rewards),
-                "reward_code": reward_code,
-                "model": model
-            }
+#             result = {
+#                 "success": True,
+#                 "success_rate": success_count / episodes,
+#                 "reward_mean": np.mean(rewards),
+#                 "reward_code": reward_code,
+#                 "model": model
+#             }
 
-        except Exception as e:
-            print(traceback.format_exc())
-            result = {
-                "success": False,
-                "exception": str(e)
-            }
+#         except Exception as e:
+#             print(traceback.format_exc())
+#             result = {
+#                 "success": False,
+#                 "exception": str(e)
+#             }
 
-        return result
+#         return result
 
-    # -------------------------------
-    # ✅ env step (너 환경에 맞게 수정)
-    # -------------------------------
-    def _step_env(self, env, action):
-        """
-        action을 env에 적용하는 함수
-        👉 너 action space 맞게 수정해야 함
-        """
+#     # -------------------------------
+#     # ✅ env step (너 환경에 맞게 수정)
+#     # -------------------------------
+#     def _step_env(self, env, action):
+#         """
+#         action을 env에 적용하는 함수
+#         👉 너 action space 맞게 수정해야 함
+#         """
 
-        # 예시 (랜덤 이동 구조면)
-        for i, uav in enumerate(env.uavs):
-            if i in action:
-                env.uavs[i].move(action[i])
+#         # 예시 (랜덤 이동 구조면)
+#         for i, uav in enumerate(env.uavs):
+#             if i in action:
+#                 env.uavs[i].move(action[i])
 
-        env.set_uav()
-        env.set_enemy()
+#         env.set_uav()
+#         env.set_enemy()
 
-    # -------------------------------
-    # ✅ observation 정의
-    # -------------------------------
-    def _get_obs(self, env):
-        obs = []
+#     # -------------------------------
+#     # ✅ observation 정의
+#     # -------------------------------
+#     def _get_obs(self, env):
+#         obs = []
 
-        for uav in env.uavs:
-            obs.extend(uav.location)
-            obs.append(uav.battery)
+#         for uav in env.uavs:
+#             obs.extend(uav.location)
+#             obs.append(uav.battery)
 
-        for enemy in env.enemies:
-            obs.extend(enemy.location)
+#         for enemy in env.enemies:
+#             obs.extend(enemy.location)
 
-        obs.extend(env.start)
-        obs.extend(env.end)
+#         obs.extend(env.start)
+#         obs.extend(env.end)
 
-        return np.array(obs, dtype=np.float32)
+#         return np.array(obs, dtype=np.float32)
 
-    # -------------------------------
-    # ✅ 여러 reward 후보 학습
-    # -------------------------------
-    def train(self, reward_data_list, skill):
+#     # -------------------------------
+#     # ✅ 여러 reward 후보 학습
+#     # -------------------------------
+#     def train(self, reward_data_list, skill):
 
-        results = []
+#         results = []
 
-        for data in reward_data_list:
-            reward_code = data["reward_code"]
+#         for data in reward_data_list:
+#             reward_code = data["reward_code"]
 
-            result = self._train_single(reward_code, skill)
-            results.append(result)
+#             result = self._train_single(reward_code, skill)
+#             results.append(result)
 
-        return results
+#         return results
