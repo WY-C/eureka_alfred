@@ -1,5 +1,5 @@
 #TODO reward 정규화
-#OBS / eval iter 횟수 수정
+#마지막 학습을 1개의 reward function 으로 하지말고 5개의 순위 매겨서 따로 학습해보기
 # eureka_main.py
 import os
 import re
@@ -39,6 +39,9 @@ The `relative_target_pos` is provided in an EGO-CENTRIC coordinate system (the a
 - `relative_target_pos[1]`: Below (-y) / Above (+y) relative to the agent's view.
 - `relative_target_pos[2]`: Behind (-z) / In Front (+z) relative to the agent's view. (Increase this to move closer to the target).
 
+You have access to the previous step's observation via `env.prev_obs` and the current step's observation via `env.last_obs`. 
+DO NOT use `metadata` to calculate distances or visibility. ONLY use `env.prev_obs` and `env.last_obs` to ensure consistency.
+
 When writing rewards, use these indices to guide the agent. For example, to make the agent move toward the target, you should encourage maximizing `relative_target_pos[2]` while minimizing its distance to zero.
 
 As an example, the reward function signature can be:
@@ -50,20 +53,38 @@ def _get_rewards_eureka(env):
 ** IMPORTANT ** 
 You have to write that reward components is the key and its reward value is the value of the rewards_dict. 
 
-Below is one example of the reward function:
+Below is a example of the reward function using prev_obs and last_obs:
 def _get_rewards_eureka(env):
-    object_rot = env.controller.last_event.metadata["objects"][0]["rotation"]
-    goal_rot = env.controller.last_event.metadata["goal"]["rotation"]
-    rot_diff = torch.abs(torch.sum(object_rot * goal_rot, dim=1) - 1) / 2
-    rotation_reward = torch.exp(-20 * rot_diff)
+    rewards_dict = dict()
+    
+    # 1. Distance Reward (Potential-based)
+    # Encourages getting closer. Scale should be moderate.
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    rewards_dict["dist_progress"] = (prev_dist - curr_dist) * 2.0
 
-    # Scaling factor for the rotation reward
-    rotation_temp = 20.0
-    total_reward = rotation_reward
+    # 2. Precision Alignment (Centering & Pitch)
+    # Use exp(-error) to provide high pressure when very close to center.
+    rel_x = env.last_obs["relative_target_pos"][0]
+    rel_y = env.last_obs["relative_target_pos"][1]
+    
+    # Centering (Yaw) alignment
+    rewards_dict["align_x"] = np.exp(-abs(rel_x) * 5.0) * 0.2
+    
+    # Vertical (Pitch) alignment: Agent's camera_horizon should match the target's Y direction
+    # This is critical for objects on the floor or high shelves.
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    target_pitch_needed = -rel_y # Heuristic: if rel_y is -0.5, look down.
+    rewards_dict["align_y"] = np.exp(-abs(curr_pitch - target_pitch_needed) * 5.0) * 0.2
 
-    rewards_dict = {{
-        "rotation_reward": rotation_reward
-    }}
+    # 3. Task Success (The most important part)
+    # Check the success condition provided in the subtask label.
+    # If success: rewards_dict["success_bonus"] = 50.0
+    
+    # 4. Step Penalty
+    rewards_dict["step_penalty"] = -0.01
+
+    total_reward = sum(rewards_dict.values())
     return total_reward, rewards_dict
 
 """
@@ -333,6 +354,7 @@ def run_train_loop():
         components_feedback = ""
         last_feedback = ""
         i = 0
+        all_successful_results = []
         while i < MAX_ITERATIONS:
             print(f"\n🔄 Iter {i+1}")
             
@@ -398,6 +420,7 @@ Please analyze each existing reward component in the suggested manner above firs
 
             # 이후 로직은 동일하게 successful_results로 진행
             successful_results = [r for r in results if r is not None and r.get("success", False)]
+            all_successful_results.extend(successful_results) # 전체 성공 결과 누적
 
         
             if not successful_results:
@@ -506,21 +529,54 @@ Please analyze each existing reward component in the suggested manner above firs
             f.write(f"🔥 BEST (score={score})\n")
             f.write(reward_code + "\n\n")
 
-        print(f"✅ Best success rate: {best_success_rate:.4f}")
-        print("\n🔥 Final training with BEST reward function...")
+        print(f"✅ Best short-term success rate: {best_success_rate:.4f}")
+        print("\n🔥 Extracting Top-K Reward Functions for Final Training...")
 
+        # 1. 중복 코드 제거 (같은 코드면 가장 높은 점수 기록만 유지)
+        unique_results = {}
+        for res in all_successful_results:
+            code = res["reward_code"]
+            if code not in unique_results:
+                unique_results[code] = res
+            else:
+                existing = unique_results[code]
+                # Eval SR -> Train SR -> Mean Reward 순으로 비교하여 갱신
+                if (res["success_rate"], res["train_success_rate"], res["reward_mean"]) > \
+                   (existing["success_rate"], existing["train_success_rate"], existing["reward_mean"]):
+                    unique_results[code] = res
+
+        # 2. 정렬 (1순위: Eval SR, 2순위: Train SR, 3순위: Reward)
+        sorted_unique_results = sorted(
+            unique_results.values(),
+            key=lambda x: (x["success_rate"], x["train_success_rate"], x["reward_mean"]),
+            reverse=True
+        )
+
+        # 3. 상위 5개(NUM_SUGGESTIONS) 추출
+        top_k_results = sorted_unique_results[:NUM_SUGGESTIONS]
 
         final_reward_data = []
-        for _ in range(NUM_SUGGESTIONS):
-            final_reward_data.append({
-                "reward_code": best_reward_code,
-                "success_code": success_code,
-                "precondition_code": s["pre"],
-                "training_steps": TRAINING_STEPS * 10,  # 🔥 워커 프로세스 내부로 50만 스텝 오버라이드 전달!
-                "eval_episodes": 100  # 🔥 평가 에피소드도 늘려서 안정적인 성능 검증
-            })
+        with open(log_path, "a") as f:
+            f.write("\n=== 🏆 Top-K Selected Reward Functions for Final Training ===\n")
+            for rank, res in enumerate(top_k_results):
+                print(f"🏅 Top {rank+1} Selected (Eval SR: {res['success_rate']:.4f}, Train SR: {res['train_success_rate']:.4f})")
+                f.write(f"🏅 Top {rank+1} Selected (Eval SR: {res['success_rate']:.4f})\n")
+                
+                final_reward_data.append({
+                    "reward_code": res["reward_code"],
+                    "success_code": success_code,
+                    "precondition_code": s["pre"],
+                    "training_steps": TRAINING_STEPS * 10,
+                    "eval_episodes": 100
+                })
 
-        # 🔥 더 길게 학습 (중요)
+        # 혹시라도 고유한 코드가 5개가 안 될 경우를 대비해 1등 코드로 빈자리 채우기
+        while len(final_reward_data) < NUM_SUGGESTIONS:
+            final_reward_data.append(final_reward_data[0].copy())
+
+        print("\n🔥 Final training starting with diverse Top candidates...")
+
+        # 🔥 최종 학습 실행
         final_results = task_manager.train(final_reward_data)
         print("final model 학습 완료")
 
@@ -554,5 +610,5 @@ Please analyze each existing reward component in the suggested manner above firs
 
 
 if __name__ == "__main__":
-    # mp.set_start_method("spawn", force=True)
+    mp.set_start_method("spawn", force=True)
     run_train_loop()

@@ -1,0 +1,3822 @@
+Subtask: Pick up Mug
+Subtask label: pick_up_object
+Category: pickupable
+Success code: any(obj["objectType"]=="Mug" for obj in metadata["inventoryObjects"])
+==================================================
+
+
+--- [Iter 1 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.05 # Small penalty for not looking down
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.05  # Reward for looking down
+        
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Pickup Reward
+    pickup_reward = 10.0 if env.last_obs["is_holding_target"][0] and not env.prev_obs["is_holding_target"][0] else 0.0
+    rewards_dict["pickup_reward"] = pickup_reward
+    total_reward += pickup_reward
+
+    # 4. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0359 | Eval SR: 0.0200 | Mean Reward: 2.1814
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    # If the target is below the agent (relative_target_pos[1] < 0), encourage positive camera_horizon (looking down)
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.1 # Small penalty for not looking down
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.1  # Reward for looking down
+        
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.5
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 4. Pickup Reward
+    prev_is_holding = env.prev_obs["is_holding_target"][0]
+    curr_is_holding = env.last_obs["is_holding_target"][0]
+    
+    pickup_reward = 0.0
+    if not prev_is_holding and curr_is_holding:
+        pickup_reward = 5.0  # One-time reward for picking up the object
+        
+    rewards_dict["pickup_reward"] = pickup_reward
+    total_reward += pickup_reward
+
+    # 5. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0580 | Eval SR: 0.0600 | Mean Reward: 7.6784
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Encourage increased visibility
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 20.0 if success_code else 0.0  # Large one-time reward for success
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0359 | Eval SR: 0.1400 | Mean Reward: 7.1821
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward to the target object
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 1.0
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Reward for holding the target object
+    prev_holding = env.prev_obs["is_holding_target"][0]
+    curr_holding = env.last_obs["is_holding_target"][0]
+
+    if curr_holding > prev_holding:
+        holding_reward = 5.0  # Reward for picking up the object
+    else:
+        holding_reward = 0.0
+
+    rewards_dict["holding_reward"] = holding_reward
+    total_reward += holding_reward
+
+    # 3. Camera Pitch (Look down at objects) Reward
+    # If the target is below the agent (relative_target_pos[1] < 0), encourage positive camera_horizon (looking down)
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.05 # Small penalty for not looking down
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.05  # Reward for looking down
+        
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 4. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0493 | Eval SR: 0.0600 | Mean Reward: 15.7550
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Scaled up
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    # If the target is below the agent (relative_target_pos[1] < 0), encourage positive camera_horizon (looking down)
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02 # Slightly increased penalty for not looking down
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Slightly increased reward for looking down
+        
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Success Reward
+    metadata = env.controller.last_event.metadata
+    if any(obj["objectType"] == env.target_object_type for obj in metadata["inventoryObjects"]):
+        success_reward = 10.0  # Large one-time reward for picking up the target object
+        rewards_dict["success_reward"] = success_reward
+        total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0444 | Eval SR: 0.1000 | Mean Reward: 5.1959
+
+Iteration 1, TrainSuccessRate: 0.03587443946188341, SuccessRate: 0.14
+Score: 7.182134628295898, SuccessRate: 0.14
+
+--- [Iter 2 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Further reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Reduced reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderate one-time reward for success
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0179 | Eval SR: 0.0400 | Mean Reward: -0.4611
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Adjusted scaling for potential-based shaping
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Encourage increased visibility
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderate one-time reward for success
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0395 | Eval SR: 0.0600 | Mean Reward: 0.2212
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Scaled down
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Reduced reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.01  # Scaled down
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderated reward for success
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0435 | Eval SR: 0.0400 | Mean Reward: -0.8092
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3: # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Encourage increased visibility
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderate one-time reward for success
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0356 | Eval SR: 0.0600 | Mean Reward: -0.1179
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce a threshold-based reward to stabilize learning
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward = 1.0  # Small one-time reward for crossing the threshold
+        rewards_dict["threshold_reward"] = threshold_reward
+        total_reward += threshold_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0730 | Eval SR: 0.0800 | Mean Reward: 4.2112
+
+Iteration 2, TrainSuccessRate: 0.07296137339055794, SuccessRate: 0.08
+Score: 4.211175441741943, SuccessRate: 0.08
+
+--- [Iter 3 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 1.0  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce a threshold-based reward to stabilize learning
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward = 1.0  # Small one-time reward for crossing the threshold
+        rewards_dict["threshold_reward"] = threshold_reward
+        total_reward += threshold_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.05  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.05  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0265 | Eval SR: 0.0400 | Mean Reward: 13.6782
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Slightly increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0565 | Eval SR: 0.1200 | Mean Reward: 4.6884
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Further reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce a threshold-based reward to stabilize learning
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward = 1.0  # Small one-time reward for crossing the threshold
+        rewards_dict["threshold_reward"] = threshold_reward
+        total_reward += threshold_reward
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Consistent scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0221 | Eval SR: 0.1000 | Mean Reward: 0.9402
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # 2. Introduce multiple threshold-based rewards to stabilize learning
+    threshold_reward = 0.0
+    if curr_dist < 2.0 and prev_dist >= 2.0:
+        threshold_reward += 1.0  # Small one-time reward for crossing the 2.0 threshold
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward += 1.0  # Small one-time reward for crossing the 1.0 threshold
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward += 1.0  # Small one-time reward for crossing the 0.5 threshold
+    
+    rewards_dict["threshold_reward"] = threshold_reward
+    total_reward += threshold_reward
+
+    # 3. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 4. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 5. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Encourage increased visibility
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 6. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0352 | Eval SR: 0.0400 | Mean Reward: 12.8592
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Scaled down to prevent dominance
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # One-time reward for crossing the first threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 2.0  # One-time reward for crossing the second threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Further reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Slightly increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Slightly increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Slightly scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0222 | Eval SR: 0.0800 | Mean Reward: 1.9404
+
+Iteration 3, TrainSuccessRate: 0.05652173913043478, SuccessRate: 0.12
+Score: 4.688416004180908, SuccessRate: 0.12
+
+--- [Iter 4 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.3  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Slightly increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Slightly increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.15  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0588 | Eval SR: 0.1400 | Mean Reward: 5.5305
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.1405 | Eval SR: 0.1200 | Mean Reward: 2.0898
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+    if curr_dist < 0.1 and prev_dist >= 0.1:
+        threshold_reward_4 = 0.5  # Smaller one-time reward for crossing the 0.1 threshold
+        rewards_dict["threshold_reward_4"] = threshold_reward_4
+        total_reward += threshold_reward_4
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0185 | Eval SR: 0.0600 | Mean Reward: 0.2650
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.7  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Reduced one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Reduced one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Reduced one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.02  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0543 | Eval SR: 0.1200 | Mean Reward: 8.9532
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.25  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0746 | Eval SR: 0.1000 | Mean Reward: 2.4511
+
+Iteration 4, TrainSuccessRate: 0.058823529411764705, SuccessRate: 0.14
+Score: 5.530506134033203, SuccessRate: 0.14
+
+--- [Iter 5 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Reduced one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Reduced one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Reduced one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0271 | Eval SR: 0.0000 | Mean Reward: 5.0371
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Further adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Slightly reduced success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0538 | Eval SR: 0.1000 | Mean Reward: 1.6956
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Further reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Small penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Small reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Small reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Further reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0227 | Eval SR: 0.0200 | Mean Reward: 0.0767
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.25  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0271 | Eval SR: 0.0600 | Mean Reward: 3.4168
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Further scaled down
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Reduced one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Reduced one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Reduced one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0491 | Eval SR: 0.0600 | Mean Reward: 1.0949
+
+Iteration 5, TrainSuccessRate: 0.053811659192825115, SuccessRate: 0.1
+Score: 1.6956210136413574, SuccessRate: 0.1
+
+--- [Iter 6 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 2.0 if success_code else 0.0  # Further reduced success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0267 | Eval SR: 0.0600 | Mean Reward: 8.0647
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.3  # Keep the scaling as it provides good feedback
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Keep the reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Keep the reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Slightly reduce the step penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Keep the scaling as it provides good feedback
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Keep the success reward high to encourage completion
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0655 | Eval SR: 0.1200 | Mean Reward: 4.5967
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Slightly reduced success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0351 | Eval SR: 0.0800 | Mean Reward: 2.2271
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increase scaling slightly
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Slightly increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Slightly increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.02  # Increase step penalty slightly to encourage faster completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Keep scaling as before
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderate success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0395 | Eval SR: 0.0800 | Mean Reward: 4.7763
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.3  # Slightly increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.02  # Increased penalty to encourage quicker completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Kept the same
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0644 | Eval SR: 0.0600 | Mean Reward: -0.3606
+
+Iteration 6, TrainSuccessRate: 0.06550218340611354, SuccessRate: 0.12
+Score: 4.596737861633301, SuccessRate: 0.12
+
+--- [Iter 7 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Scaled down for better balance
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Reduced one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.002  # Further reduced step penalty to encourage exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Slightly reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Reduced success reward to 5.0
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0302 | Eval SR: 0.0400 | Mean Reward: 5.2745
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Reduce the scaling factor
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.2  # Reduce the reward magnitude
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.2  # Reduce the reward magnitude
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.2  # Reduce the reward magnitude
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduce the penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduce the reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reduce the reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Increase the step penalty
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Increase the scaling factor
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Reduce the success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0460 | Eval SR: 0.0800 | Mean Reward: 0.8987
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling to avoid large rewards
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.2  # Reduced one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.2  # Reduced one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.2  # Reduced one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reduced reward
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Slightly reduce the step penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Increased scaling for more meaningful feedback
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately reduced success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0508 | Eval SR: 0.0400 | Mean Reward: 0.7500
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Slightly reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Slightly reduced step penalty
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Reduced success reward to moderate level
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0630 | Eval SR: 0.1000 | Mean Reward: 2.5161
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.2  # Reduced reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.2  # Reduced reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.2  # Reduced reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Keep the reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Keep the reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Keep the scaling as it provides good feedback
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Reduced success reward to stabilize learning
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0902 | Eval SR: 0.1000 | Mean Reward: 0.2535
+
+Iteration 7, TrainSuccessRate: 0.09016393442622951, SuccessRate: 0.1
+Score: 0.2534736394882202, SuccessRate: 0.1
+
+--- [Iter 8 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Slightly increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.3  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.3  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.3  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Kept the same scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Increased success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0541 | Eval SR: 0.1400 | Mean Reward: 3.2131
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling for better feedback
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Smaller one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Smaller one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Smaller one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Increased penalty for not looking down
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward for looking down
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Reduced step penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Reduced scaling to avoid large rewards
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 15.0 if success_code else 0.0  # Scaled down success reward to fit within 10-50 range
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0736 | Eval SR: 0.0200 | Mean Reward: 6.7581
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Keep the reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Keep the reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 15.0 if success_code else 0.0  # Moderate success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0586 | Eval SR: 0.1400 | Mean Reward: 6.8352
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.3  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.02  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Keep the step penalty
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderate success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0455 | Eval SR: 0.1000 | Mean Reward: 6.0746
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Slightly increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Slightly increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Slightly increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.02  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Reduced penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0578 | Eval SR: 0.1800 | Mean Reward: 7.4898
+
+Iteration 8, TrainSuccessRate: 0.057777777777777775, SuccessRate: 0.18
+Score: 7.489774227142334, SuccessRate: 0.18
+
+--- [Iter 9 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.2  # Reduced reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.2  # Reduced reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.2  # Reduced reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Increased penalty to encourage faster completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0356 | Eval SR: 0.0800 | Mean Reward: 0.3198
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.1  # Reduced reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.1  # Reduced reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.1  # Reduced reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Reintroduced penalty to encourage efficiency
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0444 | Eval SR: 0.0600 | Mean Reward: 0.0088
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.1  # Reduced reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.1  # Reduced reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.1  # Reduced reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Slightly reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Moderate penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Moderately scaled reward
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0134 | Eval SR: 0.1200 | Mean Reward: 0.4567
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Slightly increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Slightly increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Slightly increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Small penalty for not looking down
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Small reward for looking down
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Small reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Stronger penalty to encourage quicker completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0649 | Eval SR: 0.1000 | Mean Reward: 0.9946
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.1  # Reduced reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.1  # Reduced reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.1  # Reduced reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0356 | Eval SR: 0.0400 | Mean Reward: -0.2493
+
+Iteration 9, TrainSuccessRate: 0.013392857142857142, SuccessRate: 0.12
+Score: 0.45674872398376465, SuccessRate: 0.12
+
+--- [Iter 10 All Candidate Results] ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.05  # Further reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Slightly reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Consistent penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Further reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 3.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0413 | Eval SR: 0.0400 | Mean Reward: -0.0606
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.3  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.3  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.3  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.03  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.03  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.03  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Moderate penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.3  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0457 | Eval SR: 0.1400 | Mean Reward: 5.0609
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Slightly increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Slightly reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Reduced penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Moderately scaled reward
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0415 | Eval SR: 0.0400 | Mean Reward: 3.7977
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Slightly reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Slightly reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Slightly reduced reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Reduced penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.5  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0548 | Eval SR: 0.1200 | Mean Reward: 8.2485
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.1  # Reduced scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.2  # Slightly increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.2  # Slightly increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.2  # Slightly increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.02  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Reduced penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Moderately scaled reward
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Increased success reward to provide strong incentive
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0140 | Eval SR: 0.0600 | Mean Reward: 3.4012
+
+Iteration 10, TrainSuccessRate: 0.045662100456621, SuccessRate: 0.14
+Score: 5.060937404632568, SuccessRate: 0.14
+🔥 BEST (score=5.060937404632568)
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.3  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.3  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.3  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.03  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.03  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.03  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Moderate penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.3  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+
+
+=== 🏆 Top-K Selected Reward Functions for Final Training ===
+🏅 Top 1 Selected (Eval SR: 0.1800)
+🏅 Top 2 Selected (Eval SR: 0.1400)
+🏅 Top 3 Selected (Eval SR: 0.1400)
+🏅 Top 4 Selected (Eval SR: 0.1400)
+🏅 Top 5 Selected (Eval SR: 0.1400)
+
+--- Final Evaluation of BEST Reward Function across all workers ---
+--- Candidate 1 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Slightly increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Slightly increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Slightly increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.02  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005  # Reduced penalty to allow more exploration
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.2  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.1715 | Eval SR: 0.1900 | Mean Reward: 20.4640
+
+--- Candidate 2 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.3  # Adjusted scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 1.0  # Small one-time reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 1.0  # Small one-time reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 1.0  # Small one-time reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.02  # Slightly increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.02  # Slightly increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.15  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Scaled down success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0887 | Eval SR: 0.0100 | Mean Reward: 36.8163
+
+--- Candidate 3 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.5  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.5  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.5  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.5  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.01  # Keep the reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.01  # Keep the reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.01  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.05  # Reduced scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 15.0 if success_code else 0.0  # Moderate success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.2180 | Eval SR: 0.3400 | Mean Reward: 13.6585
+
+--- Candidate 4 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Slightly increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.3  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.3  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.3  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.005  # Reduced penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.005  # Reduced reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.005  # Reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.005
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.1  # Kept the same scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 10.0 if success_code else 0.0  # Increased success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.1883 | Eval SR: 0.2100 | Mean Reward: 7.6703
+
+--- Candidate 5 ---
+def _get_rewards_eureka(env):
+    rewards_dict = dict()
+    total_reward = 0.0
+
+    # Safe check for initialization
+    if env.prev_obs is None or env.last_obs is None:
+        return total_reward, rewards_dict
+
+    # 1. Potential-based distance reward
+    prev_dist = env.prev_obs["distance"][0]
+    curr_dist = env.last_obs["distance"][0]
+    
+    # Only reward if the distance has decreased
+    distance_reward = max(prev_dist - curr_dist, 0) * 0.2  # Increased scaling
+    rewards_dict["distance_reward"] = distance_reward
+    total_reward += distance_reward
+
+    # Introduce multiple threshold-based rewards to stabilize learning
+    if curr_dist < 1.0 and prev_dist >= 1.0:
+        threshold_reward_1 = 0.3  # Increased reward for crossing the 1.0 threshold
+        rewards_dict["threshold_reward_1"] = threshold_reward_1
+        total_reward += threshold_reward_1
+    if curr_dist < 0.5 and prev_dist >= 0.5:
+        threshold_reward_2 = 0.3  # Increased reward for crossing the 0.5 threshold
+        rewards_dict["threshold_reward_2"] = threshold_reward_2
+        total_reward += threshold_reward_2
+    if curr_dist < 0.2 and prev_dist >= 0.2:
+        threshold_reward_3 = 0.3  # Increased reward for crossing the 0.2 threshold
+        rewards_dict["threshold_reward_3"] = threshold_reward_3
+        total_reward += threshold_reward_3
+
+    # 2. Camera Pitch (Look down at objects) Reward
+    curr_rel_y = env.last_obs["relative_target_pos"][1]
+    curr_pitch = env.last_obs["camera_horizon"][0]
+    
+    pitch_reward = 0.0
+    if curr_rel_y < -0.1 and curr_pitch < 0.3:  # Target is below, but agent isn't looking down enough
+        pitch_reward = -0.03  # Increased penalty
+    elif curr_rel_y < -0.1 and curr_pitch >= 0.3:
+        pitch_reward = 0.03  # Increased reward
+    elif curr_rel_y >= -0.1 and abs(curr_pitch) < 0.1:  # Target is visible, maintain neutral pitch
+        pitch_reward = 0.03  # Increased reward for neutral pitch
+    
+    rewards_dict["pitch_reward"] = pitch_reward
+    total_reward += pitch_reward
+
+    # 3. Step Penalty
+    step_penalty = -0.01  # Moderate penalty to encourage quick completion
+    rewards_dict["step_penalty"] = step_penalty
+    total_reward += step_penalty
+
+    # 4. Visibility Reward
+    prev_vis = env.prev_obs["visible"][0]
+    curr_vis = env.last_obs["visible"][0]
+    
+    visibility_reward = max(curr_vis - prev_vis, 0) * 0.3  # Increased scaling
+    rewards_dict["visibility_reward"] = visibility_reward
+    total_reward += visibility_reward
+
+    # 5. Success Reward
+    metadata = env.controller.last_event.metadata
+    success_code = any(obj["objectType"] == env.target_object_type for obj in metadata.get("inventoryObjects", []))
+    
+    success_reward = 5.0 if success_code else 0.0  # Moderately scaled success reward
+    rewards_dict["success_reward"] = success_reward
+    total_reward += success_reward
+
+    return total_reward, rewards_dict
+> [SUCCESS] Train SR: 0.0290 | Eval SR: 0.0100 | Mean Reward: 14.2708
+
