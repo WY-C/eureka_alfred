@@ -18,7 +18,7 @@ ray.init()
 # --- Config ---
 GPT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 NUM_SUGGESTIONS = 5
-TEMPERATURE = 1.0
+TEMPERATURE = 1.2
 MAX_ITERATIONS = 10
 # TRAINING_STEPS = 100
 TRAINING_STEPS = 50000
@@ -28,6 +28,12 @@ FOLLOW = True
 AREA = 1
 STRIDE = 1
 ATTACK_PROB = 0.5
+
+# ENEMY_NUM = 5
+# FOLLOW = False
+# AREA = 2
+# STRIDE = 2
+# ATTACK_PROB = 0.75
 
 TASK_DESCRIPTION = "3 UAVs must visit start and then reach end as fast as possible while avoiding enemies."
 
@@ -87,58 +93,56 @@ import random
 
 def generate_skills(llm, max_skills=3):
     prompt = f"""
-You are an expert robotics skill designer for Hierarchical Reinforcement Learning.
+You are an expert robotics skill designer for Hierarchical Reinforcement Learning (HRL).
 
-Your job is to design meaningful and reusable SKILLS for a multi-agent reinforcement learning system. 
+Your job is to design meaningful, macroscopic routing SKILLS for a multi-agent reinforcement learning system. 
 You MUST output ONLY a valid JSON array. No explanations, no markdown formatting outside the JSON block.
 
 --------------------------------------------------
 ENVIRONMENT CODE:
 {inspect.getsource(GridWorldMultiAgentEnv)}
 
-ENVIRONMENT DESCRIPTION:
-- UAV Constraints: Each UAV has a specific destination (`goal`) and a limited `battery`.
-- Enemies: There are {ENEMY_NUM} enemies in the map.
-- Enemy Behavior: Their mode is "{'follow' if FOLLOW else 'random'}". If 'follow', they track UAVs that enter their danger area.
-- Danger Area: A dynamic area around each enemy (radius={AREA}).
-- Attack Mechanics: If a UAV is inside a danger area, it gets attacked with a {ATTACK_PROB} probability, causing severe penalty/battery drain.
+ENVIRONMENT VARIABLES:
+- ENEMY_NUM: {ENEMY_NUM}
+- FOLLOW: {'True' if FOLLOW else 'False'} (If True, enemies track UAVs in their danger area. If False, they move randomly).
+- AREA: {AREA} (Radius of the dynamic danger area around enemies).
+- ATTACK_PROB: {ATTACK_PROB} (Probability of being attacked inside a danger area).
 
 --------------------------------------------------
 TASK:
 {TASK_DESCRIPTION}
 
 --------------------------------------------------
-GOAL:
-Generate a list of abstract, meaningful, and reusable SKILLS that agents can use to solve the task.
-
-Each skill must:
-- Be a high-level strategic behavior (NOT a low-level action like 'move_up').
-- Help the UAV balance speed, safety (avoiding enemies), and efficiency (battery).
+SKILL DESIGN PRINCIPLES (CRITICAL):
+1. Macroscopic Routing, Not Local Maneuvers: A valid skill is a global pathfinding philosophy (e.g., "traverse the map by clinging to walls"). Do NOT generate microscopic reactive actions (e.g., "zigzag", "step_back", "wait", "move_left"). 
+2. Goal-Oriented: EVERY skill MUST inherently be a strategy to move towards the destination. Purely reactive skills like "avoid_enemies" or "flee" are invalid.
+3. Parameter-Driven Emergence: Do NOT output the same generic "fast route" or "safe route" every time. You MUST invent strategies heavily tailored to the current environment variables:
+   - Think about `FOLLOW`: If True, how can the agent manipulate enemy movement? (e.g., pulling them away from chokepoints). If False, manipulation fails; focus on pure statistical evasion.
+   - Think about `ATTACK_PROB`: If low (e.g., 0.1), tanking damage for a shorter path might be optimal. If high (e.g., 0.9), strict avoidance is mandatory.
+   - Think about `AREA`: If large, pure avoidance drains too much battery. How does the agent balance this?
+4. Extreme Cost-Function Weights: Each generated skill must represent a drastically different trade-off between Distance (Speed), Battery (Efficiency), and Risk (Safety).
 
 --------------------------------------------------
-GOOD SKILLS (Examples):
-- dash_to_goal (Move towards the goal as fast as possible, ignoring minor risks)
-- detour_enemy (Take a longer route to strictly avoid enemy danger areas)
-- wait_for_clearance (Stay in place or step back to let a moving enemy pass)
-- conserve_battery (Take the absolute shortest path, heavily prioritizing battery over safety)
-
-BAD SKILLS (Do NOT generate these):
-- move_left
-- go_to_x3_y4
-- step_forward
+LEVEL OF ABSTRACTION (Example from a DIFFERENT domain - Mars Rover):
+Do NOT copy these domains. Observe how they combine movement towards a goal with a macroscopic constraint:
+- GOOD: "traverse_crater_edge" (Moves to goal by taking a curved path along high-risk terrain edges to maintain solar power)
+- GOOD: "stealth_slow_approach" (Moves to goal extremely slowly to minimize dust clouds, bypassing fast routes)
+- BAD: "avoid_rocks" (Not goal-oriented, just a reaction. Fails Principle 2)
+- BAD: "move_left" (Too low-level. Fails Principle 1)
 
 --------------------------------------------------
 RULES:
-- Maximum {max_skills} skills.
-- The output MUST be a strictly valid JSON array.
+- Generate exactly {max_skills} distinct skills.
+- Output MUST be a strictly valid JSON array.
 
 --------------------------------------------------
 OUTPUT FORMAT:
 [
   {{
+    "reasoning": "1. Analyze the exact values of FOLLOW, AREA, and ATTACK_PROB. 2. Based on these values, invent a macroscopic routing strategy (cost-function weighting). 3. Confirm it is NOT a local maneuver like 'zigzag' or 'step_back'.",
     "label": "snake_case_name",
-    "description": "Detailed explanation of what this skill does",
-    "use_when": "Specific situation when the agent should trigger this skill"
+    "description": "Detailed explanation of this specific global routing strategy towards the goal. Explicitly mention how it exploits the current AREA, FOLLOW, and ATTACK_PROB mechanics.",
+    "use_when": "Specific situation when the Meta-Controller should select this skill over others."
   }}
 ]
 """
@@ -216,8 +220,6 @@ def run_train_loop():
         system_prompt=SYSTEM_PROMPT
     )
 
-    policy_manager = PolicyManager()
-
     os.makedirs("outputs/reward_shaping_logs_uavs", exist_ok=True)
 
     skills = generate_skills(llm)
@@ -282,44 +284,47 @@ def _get_rewards_eureka(uav, enemy_locs):
             print(reward_data)
             print()
 
-            config = (
-                PPOConfig()
-                .environment(
-                    env=GridWorldMultiAgentEnv,
-                    env_config={
-                        'reward_fn': reward_data['reward_code'], # TODO: 형식에 맞게 수정 필요
-                        'ENEMY_NUM': ENEMY_NUM,
-                        'FOLLOW': FOLLOW,
-                        'AREA': AREA,
-                        'STRIDE': STRIDE,
-                        'ATTACK_PROB': ATTACK_PROB,
-                    }
-                )
-                .api_stack(
-                    enable_rl_module_and_learner=False,
-                    enable_env_runner_and_connector_v2=False
-                )
-                .framework("torch")
-                .env_runners(num_env_runners=2)
-                .training(
-                    train_batch_size=1000,
-                    gamma=0.99,
-                    lr=5e-4
-                )
-                .multi_agent(
-                    policies={"shared_policy"},
-                    policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
-                )
-            )
+            for i in range(len(reward_data)):
 
-            algo = config.build()
+                config = (
+                    PPOConfig()
+                    .environment(
+                        env=GridWorldMultiAgentEnv,
+                        env_config={
+                            'reward_fn': reward_data[i]['reward_code'], # TODO: 형식에 맞게 수정 필요
+                            'ENEMY_NUM': ENEMY_NUM,
+                            'FOLLOW': FOLLOW,
+                            'AREA': AREA,
+                            'STRIDE': STRIDE,
+                            'ATTACK_PROB': ATTACK_PROB,
+                        }
+                    )
+                    .api_stack(
+                        enable_rl_module_and_learner=False,
+                        enable_env_runner_and_connector_v2=False
+                    )
+                    .framework("torch")
+                    .env_runners(num_env_runners=2)
+                    .training(
+                        train_batch_size=1000,
+                        gamma=0.99,
+                        lr=5e-4
+                    )
+                    .multi_agent(
+                        policies={"shared_policy"},
+                        policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
+                    )
+                )
 
-            results = algo.train()
+                algo = config.build()
 
-            successful = [r for r in results if r.get("success", False)]
+                results = algo.train()
+                print(results)
 
-            if not successful:
-                continue
+                successful = [r for r in results if r.get("success", False)]
+
+                if not successful:
+                    continue
 
             best_iter = max(successful, key=lambda x: x["success_rate"])
 
